@@ -44,6 +44,30 @@ the volume vendor (#2: 49,162 apparel stores, ~17x Gorgias).
 - It slots behind the existing Adapter interface (#5): register under vendor
   "shopify-inbox" in the adapters dict; nothing else in the engine changes.
 
+## BLOCKER (found 2026-06-23 by live test): CAPTCHA on the first message
+Verified end to end on naot.com (headed). The flow is: open launcher -> type into
+`textarea[data-spec=message-input]` -> click `button[data-spec=message-submit]`. But the
+first message from a new visitor then surfaces a customer-info form (First name, Last name,
+Email Address, "Start chat" submit) that contains **`g-recaptcha-response` AND
+`h-captcha-response`** fields - i.e. it is CAPTCHA-gated. The message does NOT deliver until
+that form is completed and the CAPTCHA passes.
+
+The ShopifyInboxAdapter (adapters/shopify_inbox.py) correctly opens/types/sends and tries to
+fill the email, but it CANNOT pass the CAPTCHA, so it does not reliably deliver. Verified
+visually: after "send", the form stayed up with empty fields (no pitch delivered - so the
+live test did NOT spam naot.com, good).
+
+### Conclusion - Shopify Inbox is NOT the easy volume win the count implied
+Raw count (49,162) ranked it #1, but new-conversation injection is CAPTCHA-walled. Solving
+that at scale = captcha-solver / anti-bot territory (sketchy, costly, fragile). So:
+- **Park Shopify Inbox** for automated injection unless we accept a captcha-solving service.
+- **Pivot the next Adapter to a vendor without a CAPTCHA gate**, ideally with a JS API like
+  Gorgias had: **Crisp** (`$crisp.push(["do","message:send",...])` - clean API, count ~145) or
+  **Tidio** (~2,911, the real volume tier, DOM-based, sends immediately, email optional).
+- General lesson: vendor pick should weight *automatability* (clean API, no CAPTCHA), not just
+  store count. Gorgias was easy because of its JS API; the count leader is the hardest.
+
 ## Reply path: already solved
 Shopify Inbox auto-emails the agent reply to the address given at the gate (research/
-reply-delivery.md), so the one-inbox Reply Watcher works unchanged.
+reply-delivery.md), so the one-inbox Reply Watcher works unchanged - IF a message ever
+gets past the CAPTCHA.

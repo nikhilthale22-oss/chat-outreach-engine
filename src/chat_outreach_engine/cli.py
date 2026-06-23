@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import argparse
 
-from .adapters import GorgiasAdapter
+from .adapters import GorgiasAdapter, ShopifyInboxAdapter
 from .detect import SignatureDetector
 from .injector import Injector
 from .ledger import Ledger
@@ -37,7 +37,8 @@ def main(argv=None) -> None:
 
     domain = args.domain.strip()
     ledger = Ledger(args.db)
-    injector = Injector(ledger, SignatureDetector(), {"gorgias": GorgiasAdapter()})
+    injector = Injector(ledger, SignatureDetector(),
+                        {"gorgias": GorgiasAdapter(), "shopify-inbox": ShopifyInboxAdapter()})
     out = injector.process(
         domain, args.pitch, args.email, pitch_variant=args.variant, dry_run=not args.send
     )
