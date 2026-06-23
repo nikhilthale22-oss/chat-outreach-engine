@@ -47,17 +47,15 @@ class TidioAdapter:
                         "() => typeof window.tidioChatApi === 'object' && window.tidioChatApi",
                         timeout=20000,
                     )
-                    page.evaluate("() => { try { window.tidioChatApi.open(); } catch(e){} }")
                 except Exception:
                     return SendResult(False, "no_tidio_api")
-                time.sleep(3)
-                shot(page, "1_open")
 
-                self._maybe_email(page, reply_email)
-
-                composer = self._find_composer(page, timeout=12)
+                self._dismiss_popups(page)
+                composer = self._open_and_find_composer(page, shot)
                 if composer is None:
                     return SendResult(False, "no_composer")
+
+                self._maybe_email(page, reply_email)
                 composer.fill(pitch)
                 time.sleep(0.5)
                 shot(page, "2_typed")
@@ -74,6 +72,48 @@ class TidioAdapter:
                     browser.close()
                 except Exception:
                     pass
+
+    @staticmethod
+    def _dismiss_popups(page):
+        """Close common marketing modals that sit over the page and block the widget."""
+        for _ in range(2):
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+            for sel in ['button[aria-label*="lose" i]', 'button[title*="lose" i]',
+                        'button.close', '[class*="close" i] button', '[data-testid*="close" i]',
+                        '[aria-label="Close dialog" i]']:
+                try:
+                    loc = page.locator(sel).first
+                    if loc.count() and loc.is_visible(timeout=300):
+                        loc.click(timeout=800)
+                except Exception:
+                    continue
+            time.sleep(0.4)
+
+    def _open_and_find_composer(self, page, shot):
+        try:
+            page.evaluate("() => { try { window.tidioChatApi.open(); } catch(e){} }")
+        except Exception:
+            pass
+        time.sleep(3)
+        shot(page, "1_open")
+        c = self._find_composer(page, timeout=6)
+        if c is not None:
+            return c
+        # fallback: click the Tidio launcher bubble/iframe directly
+        for sel in ["#tidio-chat-iframe", '[id*="tidio"]']:
+            try:
+                loc = page.locator(sel).first
+                if loc.count() and loc.is_visible(timeout=800):
+                    loc.click(timeout=2000)
+                    break
+            except Exception:
+                continue
+        time.sleep(3)
+        shot(page, "1b_launcher")
+        return self._find_composer(page, timeout=8)
 
     @staticmethod
     def _find_composer(page, timeout=12):

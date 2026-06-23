@@ -18,12 +18,23 @@ open-call, but on lagarconne.com the chat panel did not visibly open (a newslett
 covered the page) so the composer was not found -> send_failed:no_composer (correctly Queued).
 
 ## Next iteration to finish it (the clear next step)
-1. Dismiss site marketing popups before opening (Escape + common close buttons).
-2. Make the open reliable: retry `tidioChatApi.open()`, and fall back to clicking the
-   `#tidio-chat-iframe` launcher; wait for the chat window iframe.
-3. Locate the composer textarea inside the Tidio chat-window iframe (not the launcher iframe).
-4. Handle an optional Tidio pre-chat form (name/email) if the merchant enabled one.
-5. Live-verify on a few stores (delivery + reply lands in the inbox).
+Tried (committed): popup-dismissal (Escape + close buttons) + `tidioChatApi.open()` + a
+launcher-click fallback. STILL fails on lagarconne.com (newsletter modal) and shoshanna.com
+(cookie-consent banner): the panel does NOT expand (stays a collapsed bubble) -> no composer.
+
+So the real blocker is **reliably OPENING the Tidio panel**, not finding the composer. The
+generic open is not landing. The focused debugging pass should:
+1. Inspect the open behavior on ONE store live: after `tidioChatApi.open()`, dump the FULL
+   frame tree + every textarea/contenteditable/input with its frame URL, to learn the exact
+   chat-window iframe + composer element (the composer may be a contenteditable, not a textarea).
+2. Handle the site overlays that block the launcher (cookie/consent banners + newsletter modals)
+   BEFORE opening - accept/close them, not just Escape.
+3. Confirm `tidioChatApi` actually opens the panel in automation (it may need the widget more
+   initialized, a real launcher click on the bubble at its coordinates, or `display(true)`).
+4. Then type into the real composer, send, handle optional pre-chat form, live-verify delivery.
+
+This needs hands-on live frame inspection (like the Shopify Inbox reverse-engineering), not
+blind selector guessing. Best done as a short dedicated pass.
 
 ## Test stores
 40 live Tidio domains in /tmp/tidio_live.json. shoshanna.com confirmed tidioChatApi=object;
