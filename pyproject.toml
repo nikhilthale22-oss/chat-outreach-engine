@@ -1,0 +1,16 @@
+[project]
+name = "chat-outreach-engine"
+version = "0.1.0"
+description = "Pitches ecommerce brands inside their own live chat widget"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chat_outreach_engine"]
