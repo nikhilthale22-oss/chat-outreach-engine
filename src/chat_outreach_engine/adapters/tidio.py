@@ -14,6 +14,11 @@ Reverse-engineered live (research/tidio-injection.md). The findings that shape t
   framesent and only report sent=True when we SEE that frame carry our text - so SendResult is
   honest (no false positives). No CAPTCHA anywhere.
 
+Hardened after an adversarial review for volume use (no false-negatives -> no double-send):
+the final delivery check polls with a driver-pumping wait so a late frame flushes; an exception
+after the wire-confirmed send still reports delivered; the resend nudge can never abort the send;
+the delivery token is always JSON-safe; launch failures return a retryable result, not a raise.
+
 Coverage caveat: only stores that embed Tidio via a direct code.tidio.co script tag initialise
 under automation; Shopify app-embed injections do not (-> no_tidio_api, retryable).
 
@@ -43,21 +48,26 @@ class TidioAdapter:
         debug = bool(os.environ.get("TIDIO_DEBUG"))
         url = "https://" + domain
         frames: list = []
-        words = re.findall(r"[A-Za-z0-9]{6,}", pitch)
-        token = max(words, key=len) if words else pitch[:10]
+        # Distinctive token we look for on the wire. Prefer a 6+ char run; fall back to the
+        # longest alnum run of any length so it is always pure ASCII (JSON-safe on the wire).
+        words = re.findall(r"[A-Za-z0-9]{6,}", pitch) or re.findall(r"[A-Za-z0-9]+", pitch)
+        token = max(words, key=len) if words else None
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=not headed, channel="chrome",
-                args=["--disable-blink-features=AutomationControlled"],
-            )
-            page = browser.new_context(
-                viewport={"width": 1366, "height": 900}, locale="en-US",
-                user_agent=("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"),
-            ).new_page()
-            page.on("websocket", lambda ws: ws.on("framesent", lambda pl: frames.append(pl)))
+            browser = None
             try:
+                browser = p.chromium.launch(
+                    headless=not headed, channel="chrome",
+                    args=["--disable-blink-features=AutomationControlled"],
+                )
+                page = browser.new_context(
+                    viewport={"width": 1366, "height": 900}, locale="en-US",
+                    user_agent=("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"),
+                ).new_page()
+                page.on("websocket",
+                        lambda ws: ws.on("framesent", lambda pl: frames.append(pl)))
+
                 page.goto(url, wait_until="domcontentloaded", timeout=45000)
                 ready = page.evaluate(
                     """async () => {
@@ -96,50 +106,82 @@ class TidioAdapter:
                 composer.press("Enter")
                 time.sleep(2)
 
-                # Pre-chat email gate (if enabled): fill the WIDGET email field, then Send.
+                prechat_blocked = False
                 email = page.locator(
                     f"{WIDGET} input[type='email'], {WIDGET} input[placeholder*='email' i]"
                 ).first
-                had_prechat = bool(email.count()) and email.is_visible(timeout=2000)
-                if had_prechat:
-                    # Always clear+fill: the field may hold overflow text, not a real address.
+                if email.count() and email.is_visible(timeout=2000):
+                    # Some pre-chat surveys also require a name; fill it if present (no-op else).
+                    self._fill_name(page)
                     email.fill(reply_email, timeout=8000, force=True)
-                    send_btn = page.locator(
-                        f"{WIDGET} button", has_text=re.compile("send", re.I)
-                    ).first
-                    if send_btn.count():
-                        send_btn.click(timeout=4000, force=True)
+                    send_btn = self._send_button(page)
+                    if send_btn is not None:
+                        try:
+                            send_btn.click(timeout=4000, force=True)
+                        except Exception:
+                            pass
                     time.sleep(3)
-                    if not self._delivered(frames, token):   # resend once if it did not flush
-                        c2 = self._composer(page)
-                        if c2 is not None and (c2.input_value() or "").strip():
-                            c2.press("Enter")
-                            time.sleep(2)
+                    if not self._delivered(frames, token):
+                        # Resend nudge: read text generically (a contenteditable has no
+                        # input_value()) and NEVER let a recovery error abort the send.
+                        try:
+                            c2 = self._composer(page)
+                            if c2 is not None:
+                                txt = c2.evaluate(
+                                    "el => (el.value != null ? el.value : (el.textContent || ''))")
+                                if (txt or "").strip():
+                                    c2.press("Enter")
+                                    time.sleep(2)
+                        except Exception:
+                            pass
+                    # If a required field (phone/consent) still blocks Send, flag it distinctly
+                    # so the batch runner routes this store out of the retry loop.
+                    if not self._delivered(frames, token):
+                        try:
+                            sb = self._send_button(page)
+                            if sb is not None and sb.is_disabled(timeout=500):
+                                prechat_blocked = True
+                        except Exception:
+                            pass
                 else:
-                    # No pre-chat: attach the reply email via the API so the operator can reply.
-                    page.evaluate(
-                        "(e) => { try { window.tidioChatApi.setContactProperties({email: e}); }"
-                        " catch(_){} }", reply_email,
-                    )
-                    time.sleep(1)
+                    # No pre-chat: the Enter already sent. Attach the email via the API so the
+                    # operator can reply. Guard the evaluate: the context may detach post-send.
+                    try:
+                        page.evaluate(
+                            "(e) => { try { window.tidioChatApi.setContactProperties({email: e}); }"
+                            " catch(_){} }", reply_email,
+                        )
+                    except Exception:
+                        pass
 
-                time.sleep(1.5)
                 if debug:
                     try:
                         page.screenshot(path="/tmp/tidio_dbg_sent.png")
                     except Exception:
                         pass
 
-                if self._delivered(frames, token):
-                    return SendResult(True, "delivered")
+                # Final confirmation: poll with a driver-pumping wait so a late framesent
+                # callback flushes (a bare time.sleep does NOT pump the sync driver).
+                deadline = time.time() + 6
+                while time.time() < deadline:
+                    if self._delivered(frames, token):
+                        return SendResult(True, "delivered")
+                    page.wait_for_timeout(250)
+                if prechat_blocked:
+                    return SendResult(False, "prechat_blocked_required_fields")
                 return SendResult(False, "no_delivery_confirmation")
             except Exception as e:
+                # Deliver-then-raise: if the pitch already hit the wire, report it honestly so the
+                # Ledger advances and we never re-pitch (double-send) the same store next run.
+                if self._delivered(frames, token):
+                    return SendResult(True, "delivered_then_error")
                 return SendResult(False, f"{type(e).__name__}: {str(e)[:160]}")
             finally:
-                try:
-                    browser.close()
-                except Exception:
-                    pass
+                if browser:
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
 
     @staticmethod
     def _composer(page):
@@ -164,6 +206,36 @@ class TidioAdapter:
         return False
 
     @staticmethod
+    def _fill_name(page):
+        """Fill a pre-chat name field if the survey requires one (no-op on email-only forms)."""
+        name = page.locator(
+            f"{WIDGET} input[name*='name' i], {WIDGET} input[placeholder*='name' i]"
+        ).first
+        try:
+            if name.count() and name.is_visible(timeout=500):
+                name.fill("Nikhil", timeout=4000, force=True)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _send_button(page):
+        """The widget Send control. Ordered: the proven visible-text 'Send' first, then
+        icon/aria-only variants. First visible match wins; never matches outside #tidio-chat."""
+        candidates = (
+            page.locator(f"{WIDGET} button", has_text=re.compile("send", re.I)),
+            page.locator(f"{WIDGET} button[aria-label*='send' i]"),
+            page.locator(f"{WIDGET} [role='button'][aria-label*='send' i]"),
+        )
+        for loc in candidates:
+            try:
+                first = loc.first
+                if first.count() and first.is_visible(timeout=500):
+                    return first
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
     def _dismiss_site_overlays(page):
         """Close page-level modals (newsletter/consent) that can obscure the widget's fields.
         Scoped OUTSIDE the Tidio widget so we never close the chat itself."""
@@ -183,5 +255,12 @@ class TidioAdapter:
 
     @staticmethod
     def _delivered(frames, token):
-        return any(isinstance(f, str) and "visitorNewMessage" in f and token in f
-                   for f in frames)
+        """True iff a visitorNewMessage frame carries our pitch token (raw or JSON-escaped).
+        With no usable token (pitch is all punctuation/non-ASCII, ~never), fall back to the
+        presence of a visitorNewMessage frame, which is the real send event."""
+        esc = json.dumps(token)[1:-1] if token else ""
+        for f in frames:
+            if isinstance(f, str) and "visitorNewMessage" in f:
+                if not token or token in f or (esc and esc in f):
+                    return True
+        return False
