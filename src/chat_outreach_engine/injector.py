@@ -25,6 +25,7 @@ class Detection:
 
 @dataclass(frozen=True)
 class SendResult:
+    """What an Adapter reports back: whether the Pitch was sent, plus a short detail."""
     sent: bool
     detail: str = ""
 
@@ -42,6 +43,11 @@ class Detector(Protocol):
 
 
 class Adapter(Protocol):
+    """The one contract every vendor Adapter implements. Given a known Brand domain,
+    open that vendor's Chat Widget, pass the email gate with reply_email, send the
+    Pitch, and return a SendResult. Adding a vendor means adding one class with this
+    single method and registering it; nothing else in the engine changes."""
+
     def send(self, domain: str, pitch: str, reply_email: str) -> SendResult: ...
 
 
