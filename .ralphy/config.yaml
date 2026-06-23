@@ -1,0 +1,51 @@
+# chat-outreach-engine/.ralphy/config.yaml
+#
+# Per-project ralphy config for the Build (and autonomous Harden) phase.
+# The `rules` block is what enforces TDD, mocking boundaries, visible testing,
+# and no-push on every spawned agent, so treat it as load-bearing, not boilerplate.
+# Keep the four standing rules here in sync with the CLAUDE.md block written by
+# /setup-matt-pocock-skills (two copies of one contract, two readers).
+#
+# Pinned to ralphy 4.7.2. In native GitHub mode you run:
+#   ralphy --github nikhilthale22-oss/chat-outreach-engine --github-label ready-for-agent --claude --max-iterations 0
+
+project:
+  name: chat-outreach-engine
+  language: python            # informational only; shown in headers
+  framework: fastapi          # informational only
+
+commands:
+  # The success signal between iterations. Must run the REAL suite against REAL
+  # data and exit non-zero on failure.
+  test: "uv run pytest -q"
+  lint: "uv run ruff check ."
+  build: ""
+
+rules:
+  # --- TDD inner loop (red-green-refactor) ---
+  - "Work ONE issue per iteration. Do not start a second task before the first is green."
+  - "TDD strictly: write ONE failing test for ONE behaviour, see it fail, then write the MINIMAL code to pass. Never write multiple tests before any implementation."
+  - "Test behaviour through PUBLIC interfaces only. A test that breaks on an internal rename is wrong; rewrite it to assert observable behaviour."
+  - "Refactor ONLY when the suite is green. Never refactor while a test is red."
+  - "Prefer deep modules: small interface, deep implementation. The interface is the test surface."
+  # --- mocking boundaries ---
+  - "Mock ONLY at true system seams: external APIs, databases, time, randomness. NEVER mock your own modules or internal collaborators."
+  - "At a seam, use an SDK-style adapter (one function per external operation), not a generic fetcher, so each mock returns one shape."
+  # --- visible testing (standing rule 4) ---
+  - "Tests must run against real data with raw output shown. Do NOT invent a synthetic test that merely describes your own output as if it were validation."
+  # --- no unattended live deploy (standing rule 1) ---
+  - "Commit on green. NEVER run 'git push'. Pushing is a human review gate."
+  - "Never deploy, never restart a live service, never touch production during an autonomous run."
+  # --- house style (standing rule 2) ---
+  - "No em dashes in code comments, commit messages, or docs. Use a regular hyphen '-'. Em dashes are an AI tell."
+
+boundaries:
+  # NOTE: never_touch is ADVISORY (ralphy spawns the agent with skip-permissions).
+  never_touch:
+    - ".env"
+    - ".env.*"
+    - "**/secrets/**"
+    - ".git/**"
+    - ".ralphy/**"
+    - "**/*.lock"
+    - "research/**"         # Phase 0 Spike findings are frozen history
