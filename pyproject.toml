@@ -3,7 +3,7 @@ name = "chat-outreach-engine"
 version = "0.1.0"
 description = "Pitches ecommerce brands inside their own live chat widget"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["requests>=2", "playwright>=1.40"]
 
 [dependency-groups]
 dev = ["pytest>=8"]

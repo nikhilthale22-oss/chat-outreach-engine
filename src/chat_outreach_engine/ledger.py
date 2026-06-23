@@ -43,7 +43,8 @@ class Ledger:
                 id     INTEGER PRIMARY KEY AUTOINCREMENT,
                 domain TEXT NOT NULL,
                 stage  TEXT NOT NULL,
-                at     TEXT NOT NULL
+                at     TEXT NOT NULL,
+                note   TEXT
             );
             """
         )
@@ -76,8 +77,10 @@ class Ledger:
         )
         self._db.commit()
 
-    def advance(self, domain: str, to_stage: str, pitch_variant: str | None = None) -> None:
-        """Move a Brand to a new Stage, appending to the history."""
+    def advance(self, domain: str, to_stage: str, pitch_variant: str | None = None,
+                note: str | None = None) -> None:
+        """Move a Brand to a new Stage, appending to the history. An optional note
+        records why (e.g. 'already has AI', 'no chat widget')."""
         if to_stage not in STAGES:
             raise UnknownStage(to_stage)
         row = self._db.execute(
@@ -92,8 +95,8 @@ class Ledger:
             (to_stage, variant, now, domain),
         )
         self._db.execute(
-            "INSERT INTO stage_history (domain, stage, at) VALUES (?, ?, ?)",
-            (domain, to_stage, now),
+            "INSERT INTO stage_history (domain, stage, at, note) VALUES (?, ?, ?, ?)",
+            (domain, to_stage, now, note),
         )
         self._db.commit()
 

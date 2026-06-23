@@ -6,3 +6,5 @@ venv/
 .env.*
 .DS_Store
 .ralphy/state*
+*.db
+.pytest_cache/
