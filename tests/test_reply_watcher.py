@@ -63,3 +63,30 @@ def test_longest_domain_wins_on_overlap(tmp_path):
     led = pitched_ledger(tmp_path, ["foo.com", "shop.foo.com"])
     matched = default_matcher(Email("x@shop.foo.com", "", ""), {"foo.com", "shop.foo.com"})
     assert matched == "shop.foo.com"
+
+
+# A real reply we received (support@glamnetic.com): an automated Gorgias CSAT, not a human.
+# It must NOT advance the Brand to Replied or it is a false positive. Body is the verbatim text.
+GLAMNETIC_CSAT = (
+    "Hi ,\n\nI'd love to hear your feedback! Click on the stars below to rate our service.\n\n"
+    "Kind Regards,\nJackie\nGlamnetic Management\n\n"
+    "P.S. If you're reading this and haven't received our reply, please check your spam folder!"
+)
+
+
+def test_csat_auto_reply_does_not_advance_to_replied(tmp_path):
+    led = pitched_ledger(tmp_path, ["glamnetic.com"])
+    w = watcher(led, [Email("support@glamnetic.com",
+                            "Re: Hey, saw you don't have an AI chatbot on your site", GLAMNETIC_CSAT)])
+    results = w.poll()
+    assert led.get_stage("glamnetic.com") == "Pitched"   # auto-reply is noise, not a real reply
+    assert results == [(results[0][0], None)]
+
+
+def test_human_reply_from_pitched_brand_still_advances(tmp_path):
+    # Conservatism guard: the auto-reply filter must NOT swallow a genuine human reply.
+    led = pitched_ledger(tmp_path, ["glamnetic.com"])
+    w = watcher(led, [Email("founder@glamnetic.com", "Re: your message",
+                            "Sure, how much would this cost per month?")])
+    w.poll()
+    assert led.get_stage("glamnetic.com") == "Replied"

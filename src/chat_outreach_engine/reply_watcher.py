@@ -19,10 +19,43 @@ class Email:
     uid: str = ""
 
 
+# Strong, specific markers of an automated reply (CSAT surveys, vacation responders, no-reply
+# senders). Kept deliberately tight: a genuine human "yes, interested" is the precious signal,
+# so we only drop on unambiguous auto-reply phrasing, never on a generic word like "feedback".
+# Seeded from the first real reply we got (glamnetic's Gorgias CSAT). See ADR-0002 / #12.
+_AUTO_REPLY_MARKERS = (
+    "rate our service",
+    "click on the stars",
+    "how did we do",
+    "out of office",
+    "automatic reply",
+    "auto-reply",
+    "autoreply",
+    "automated response",
+    "this is an automated",
+    "do not reply to this",
+    "please do not reply",
+)
+# NB: we deliberately do NOT filter on a no-reply *sender*. The legitimate Tidio reply
+# notification itself arrives from a no-reply system address (e.g. noreply@tidio.email,
+# "New message from <Brand>"), so a sender-based filter would drop the very replies we want.
+# Auto-replies are caught by their body/subject phrasing instead.
+
+
+def is_auto_reply(email: Email) -> bool:
+    """True if this looks like an automated message (CSAT survey, vacation responder), which
+    must not be counted as a real merchant reply. Judged by body/subject text, not sender."""
+    text = f"{email.subject}\n{email.body}".lower()
+    return any(m in text for m in _AUTO_REPLY_MARKERS)
+
+
 def default_matcher(email: Email, pitched_domains) -> str | None:
     """Return the Pitched domain this reply belongs to, or None. Heuristic: the domain (or its
     bare brand token) appears in the From, Subject, or body. Longest domain wins so a more
-    specific host (shop.foo.com) beats a generic one (foo.com)."""
+    specific host (shop.foo.com) beats a generic one (foo.com). Automated messages (CSAT, OOO,
+    no-reply) are never matched - they are noise, not a real reply."""
+    if is_auto_reply(email):
+        return None
     hay = f"{email.from_addr}\n{email.subject}\n{email.body}".lower()
     for d in sorted(pitched_domains, key=len, reverse=True):
         dl = d.lower()
