@@ -47,7 +47,7 @@ class TidioAdapter:
 
         headed = os.environ.get("HEADED", "").lower() in ("1", "true", "yes")
         debug = bool(os.environ.get("TIDIO_DEBUG"))
-        url = "https://" + domain
+        url = self._target_url(domain)
         frames: list = []
         # Distinctive token we look for on the wire. Prefer a 6+ char run; fall back to the
         # longest alnum run of any length so it is always pure ASCII (JSON-safe on the wire).
@@ -185,6 +185,15 @@ class TidioAdapter:
                         browser.close()
                     except Exception:
                         pass
+
+    @staticmethod
+    def _target_url(domain: str) -> str:
+        """The URL to load for a Brand. A bare domain gets https; an explicit scheme is kept
+        as-is, so the adapter can be pointed at an http test page or an http-only store."""
+        d = (domain or "").strip()
+        if d.startswith("http://") or d.startswith("https://"):
+            return d
+        return "https://" + d
 
     @staticmethod
     def _composer(page):
