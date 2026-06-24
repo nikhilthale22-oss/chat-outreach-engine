@@ -52,3 +52,24 @@ _Avoid_: status, state, step
 A Brand we are allowed to pitch: it has a Chat Widget and no AI behind it. The Injector
 confirms this right before sending and skips any Brand that already has AI.
 _Avoid_: eligible, valid, target
+
+**Batch Runner**:
+The volume engine: takes a list of Brands and pitches them concurrently, doing the slow
+network work in parallel while every Ledger write stays serial. Resumable via the Ledger.
+_Avoid_: queue, worker pool, job, crawler
+
+**Assessment**:
+The result of one live look at a Brand before pitching: did its page load, what vendor its
+Chat Widget is, whether it has AI, and whether it passes the Live Re-verify Gate.
+_Avoid_: scan, check, detection (bare)
+
+**Live Re-verify Gate**:
+The check, against the Brand's live HTML, that its Chat Widget will actually load under
+automation (for Tidio: a direct code.tidio.co loader tag, not a dynamic app-embed). Filters
+out false positives and un-loadable stores before a browser launch is spent.
+_Avoid_: filter, validation, verification (bare)
+
+**Variant**:
+Which version of the Pitch a Brand received: A (converts shoppers / CVR) or B (raises average
+order value / AOV). Recorded on the Ledger so we can compare which Pitch converts.
+_Avoid_: version, arm, test

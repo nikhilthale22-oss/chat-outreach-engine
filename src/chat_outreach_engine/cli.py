@@ -13,16 +13,9 @@ from .adapters import GorgiasAdapter, ShopifyInboxAdapter, TidioAdapter
 from .detect import SignatureDetector
 from .injector import Injector
 from .ledger import Ledger
+from .pitches import PITCH_A
 
-DEFAULT_PITCH = (
-    "Hey, saw you don't have an AI chatbot on your site. "
-    "I can build one that converts your shoppers (increases your CVR). "
-    "Built one recently for Tusq apparel. "
-    "I'll build it for free on a mock site first so you can test it, "
-    "and we only make it live once you are satisfied. Would you be interested?\n\n"
-    "Nikhil Thale, Founder, Postlist\n"
-    "(flat $100/month for the first 10 clients since I'm gathering feedback)"
-)
+DEFAULT_PITCH = PITCH_A
 
 
 def main(argv=None) -> None:

@@ -32,6 +32,7 @@ import re
 import time
 
 from ..injector import SendResult
+from ..proxy import playwright_proxy
 
 WIDGET = "#tidio-chat"  # Tidio's open-shadow-DOM host; scopes us to the widget
 ENTRY_LABELS = ("Chat with us", "Send us a message", "New conversation",
@@ -62,6 +63,7 @@ class TidioAdapter:
                 )
                 page = browser.new_context(
                     viewport={"width": 1366, "height": 900}, locale="en-US",
+                    proxy=playwright_proxy(),
                     user_agent=("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"),
                 ).new_page()

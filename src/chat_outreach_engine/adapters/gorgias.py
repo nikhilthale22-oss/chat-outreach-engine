@@ -10,6 +10,7 @@ import json
 import time
 
 from ..injector import SendResult
+from ..proxy import playwright_proxy
 
 
 class GorgiasAdapter:
@@ -25,7 +26,8 @@ class GorgiasAdapter:
                 args=["--disable-blink-features=AutomationControlled"],
             )
             page = browser.new_context(
-                viewport={"width": 1366, "height": 768}, locale="en-US"
+                viewport={"width": 1366, "height": 768}, locale="en-US",
+                proxy=playwright_proxy(),
             ).new_page()
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=20000)
