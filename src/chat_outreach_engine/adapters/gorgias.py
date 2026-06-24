@@ -7,6 +7,7 @@ lazily so the package imports without it in test environments.
 from __future__ import annotations
 
 import json
+import os
 import time
 
 from ..injector import SendResult
@@ -21,8 +22,9 @@ class GorgiasAdapter:
 
         url = "https://" + domain
         with sync_playwright() as p:
+            channel = os.environ.get("BROWSER_CHANNEL", "chrome") or None
             browser = p.chromium.launch(
-                headless=True, channel="chrome",
+                headless=True, channel=channel,
                 args=["--disable-blink-features=AutomationControlled"],
             )
             page = browser.new_context(

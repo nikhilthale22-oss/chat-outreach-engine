@@ -57,8 +57,9 @@ class TidioAdapter:
         with sync_playwright() as p:
             browser = None
             try:
+                channel = os.environ.get("BROWSER_CHANNEL", "chrome") or None
                 browser = p.chromium.launch(
-                    headless=not headed, channel="chrome",
+                    headless=not headed, channel=channel,
                     args=["--disable-blink-features=AutomationControlled"],
                 )
                 page = browser.new_context(
