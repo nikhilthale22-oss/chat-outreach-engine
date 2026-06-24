@@ -133,13 +133,17 @@ class LiveAssessor:
 class BatchRunner:
     def __init__(self, ledger: Ledger, adapters: dict, reply_email: str,
                  assessor=None, pitches: dict | None = None, concurrency: int = 8,
-                 max_attempts: int = 4, on_event=None):
+                 assess_concurrency: int = 16, max_attempts: int = 4, on_event=None):
         self._ledger = ledger
         self._adapters = adapters
         self._reply_email = reply_email
         self._assessor = assessor or LiveAssessor()
         self._pitches = pitches or PITCHES
         self._concurrency = max(1, concurrency)
+        # Assessment is lightweight HTTP, so it runs at a higher concurrency than the
+        # browser sends (which are memory-bound). Otherwise assessing thousands of stores
+        # at the send concurrency would delay the first pitch by hours.
+        self._assess_concurrency = max(1, assess_concurrency)
         self._max_attempts = max(1, max_attempts)
         self._on_event = on_event or (lambda msg: None)
 
@@ -169,8 +173,8 @@ class BatchRunner:
         self._on_event(f"assessing {len(to_assess)} brands "
                        f"({len(clean) - len(to_assess)} skipped/done)")
 
-        # Phase 1: concurrent live assessment.
-        assessments = self._map(self._safe_assess, to_assess)
+        # Phase 1: concurrent live assessment (high concurrency - it's just HTTP).
+        assessments = self._map(self._safe_assess, to_assess, workers=self._assess_concurrency)
 
         # Phase 2: serial Ledger decisions -> send worklist.
         worklist = []  # (domain, vendor, variant)
@@ -256,10 +260,10 @@ class BatchRunner:
         self._on_event(f"{domain}: {report.outcomes[-1].action} ({variant}) {detail}")
 
     # --- helpers ---
-    def _map(self, fn, items):
+    def _map(self, fn, items, workers=None):
         if not items:
             return []
-        workers = min(self._concurrency, len(items))
+        workers = min(workers or self._concurrency, len(items))
         with ThreadPoolExecutor(max_workers=workers) as ex:
             return list(ex.map(fn, items))
 

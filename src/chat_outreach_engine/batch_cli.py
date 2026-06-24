@@ -45,7 +45,9 @@ def main(argv=None) -> None:
     ap.add_argument("--send", action="store_true", help="actually pitch (default: dry-run)")
     ap.add_argument("--email", default="nikhilthale18@gmail.com")
     ap.add_argument("--db", default="ledger.db")
-    ap.add_argument("--concurrency", type=int, default=8)
+    ap.add_argument("--concurrency", type=int, default=8, help="browser send concurrency")
+    ap.add_argument("--assess-concurrency", type=int, default=16,
+                    help="HTTP assessment concurrency (higher; light work)")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--max-attempts", type=int, default=4,
                     help="mark a Brand Dead after this many failed sends (stops forever-retry)")
@@ -60,6 +62,7 @@ def main(argv=None) -> None:
     enabled = {v.strip() for v in args.vendors.split(",") if v.strip()}
     adapters = {k: a for k, a in available.items() if k in enabled}
     runner = BatchRunner(ledger, adapters, args.email, concurrency=args.concurrency,
+                         assess_concurrency=args.assess_concurrency,
                          max_attempts=args.max_attempts, on_event=lambda m: print(m, flush=True))
 
     report = runner.run(domains, dry_run=not args.send, limit=args.limit)
