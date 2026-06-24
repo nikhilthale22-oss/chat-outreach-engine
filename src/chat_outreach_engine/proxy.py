@@ -12,6 +12,7 @@ for the Mac, which already has a residential IP):
 from __future__ import annotations
 
 import os
+from urllib.parse import quote
 
 
 def playwright_proxy() -> dict | None:
@@ -39,7 +40,8 @@ def requests_proxies() -> dict | None:
     password = os.environ.get("PROXY_PASSWORD")
     if user and password and "://" in server:
         scheme, host = server.split("://", 1)
-        url = f"{scheme}://{user}:{password}@{host}"
+        # Percent-encode credentials so special chars (@ : / # ...) don't corrupt the URL.
+        url = f"{scheme}://{quote(user, safe='')}:{quote(password, safe='')}@{host}"
     else:
         url = server
     return {"http": url, "https": url}

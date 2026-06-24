@@ -19,7 +19,7 @@ loader against the live HTML before spending a browser launch.
 from __future__ import annotations
 
 import re
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from . import signatures
@@ -27,6 +27,11 @@ from .ledger import Ledger, UnknownBrand
 from .pitches import PITCHES
 
 AI_CATEGORY = "ai-chat"
+# Adapter SendResult.detail values that are STRUCTURALLY terminal (will never deliver on a
+# retry), so the Brand is marked Dead instead of re-launching a browser at it forever. Only
+# the documented-terminal one; transient details (no_tidio_api, no_composer, timeouts) stay
+# retryable and are bounded by the attempt cap instead.
+TERMINAL_SEND_DETAILS = {"prechat_blocked_required_fields"}
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
 
@@ -128,13 +133,14 @@ class LiveAssessor:
 class BatchRunner:
     def __init__(self, ledger: Ledger, adapters: dict, reply_email: str,
                  assessor=None, pitches: dict | None = None, concurrency: int = 8,
-                 on_event=None):
+                 max_attempts: int = 4, on_event=None):
         self._ledger = ledger
         self._adapters = adapters
         self._reply_email = reply_email
         self._assessor = assessor or LiveAssessor()
         self._pitches = pitches or PITCHES
         self._concurrency = max(1, concurrency)
+        self._max_attempts = max(1, max_attempts)
         self._on_event = on_event or (lambda msg: None)
 
     def run(self, domains, dry_run: bool = False, limit: int | None = None) -> BatchReport:
@@ -147,8 +153,6 @@ class BatchRunner:
                 continue
             seen.add(d)
             clean.append(d)
-        if limit is not None:
-            clean = clean[:limit]
 
         # Phase 0: drop Brands already past Queued (serial Ledger reads; keeps us from re-fetching).
         to_assess = []
@@ -158,8 +162,12 @@ class BatchRunner:
                 report.add(Outcome(d, "skipped", f"already {stage}"))
             else:
                 to_assess.append(d)
+        # Apply --limit to FRESH work, not the raw list, so a resumed run is not consumed by
+        # already-done Brands at the top of the file.
+        if limit is not None:
+            to_assess = to_assess[:limit]
         self._on_event(f"assessing {len(to_assess)} brands "
-                       f"({len(clean) - len(to_assess)} already done)")
+                       f"({len(clean) - len(to_assess)} skipped/done)")
 
         # Phase 1: concurrent live assessment.
         assessments = self._map(self._safe_assess, to_assess)
@@ -201,21 +209,51 @@ class BatchRunner:
         self._on_event(f"sending {len(worklist)} pitches "
                        f"(concurrency {self._concurrency})")
 
-        # Phase 3: concurrent sends (no Ledger access in the workers).
-        results = self._map(self._safe_send, worklist)
-
-        # Phase 4: serial Ledger writes.
-        for domain, vendor, variant, sent, detail in results:
-            if sent:
-                self._ledger.mark_pitched(domain, pitch_variant=variant)
-                report.add(Outcome(domain, "pitched", detail, vendor, variant))
-            else:
-                report.add(Outcome(domain, "send_failed", detail, vendor, variant))
-            self._on_event(f"{domain}: {'pitched' if sent else 'send_failed'} "
-                           f"({variant}) {detail}")
+        # Phase 3+4 fused: send concurrently, but RECORD each result to the Ledger the moment
+        # its send returns (on the main thread, so the single SQLite connection stays single-
+        # threaded). This shrinks the double-send window from the whole batch to one in-flight
+        # send: a crash/Ctrl-C can only lose pitches still on the wire, not already-confirmed
+        # ones. The finally drains any sends that completed during shutdown (e.g. a Ctrl-C that
+        # lets in-flight browsers finish) so those are recorded too, not silently re-pitched.
+        if worklist:
+            workers = min(self._concurrency, len(worklist))
+            recorded: set = set()
+            ex = ThreadPoolExecutor(max_workers=workers)
+            futures = {ex.submit(self._safe_send, item): item for item in worklist}
+            try:
+                for fut in as_completed(futures):
+                    self._record_send(fut.result(), report)
+                    recorded.add(fut)
+            finally:
+                ex.shutdown(wait=True)
+                for fut in futures:
+                    if fut not in recorded and fut.done() and not fut.cancelled():
+                        try:
+                            self._record_send(fut.result(), report)
+                            recorded.add(fut)
+                        except Exception:
+                            pass
 
         self._on_event(report.summary())
         return report
+
+    def _record_send(self, result, report) -> None:
+        domain, vendor, variant, sent, detail = result
+        if sent:
+            self._ledger.mark_pitched(domain, pitch_variant=variant)
+            report.add(Outcome(domain, "pitched", detail, vendor, variant))
+        elif detail in TERMINAL_SEND_DETAILS:
+            self._ledger.advance(domain, "Dead", note=detail)
+            report.add(Outcome(domain, "dead", detail, vendor, variant))
+        else:
+            n = self._ledger.record_send_failure(domain, detail)
+            if n >= self._max_attempts:
+                self._ledger.advance(domain, "Dead", note=f"unreachable after {n} attempts")
+                report.add(Outcome(domain, "dead", f"unreachable after {n} attempts",
+                                   vendor, variant))
+            else:
+                report.add(Outcome(domain, "send_failed", detail, vendor, variant))
+        self._on_event(f"{domain}: {report.outcomes[-1].action} ({variant}) {detail}")
 
     # --- helpers ---
     def _map(self, fn, items):

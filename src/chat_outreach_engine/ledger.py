@@ -48,6 +48,11 @@ class Ledger:
             );
             """
         )
+        # Migration: failed-send attempt counter (lets the batch runner cap retries on a
+        # store that keeps not delivering, instead of re-launching a browser at it forever).
+        cols = [r["name"] for r in self._db.execute("PRAGMA table_info(brands)")]
+        if "attempts" not in cols:
+            self._db.execute("ALTER TABLE brands ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
         self._db.commit()
 
     # --- writes ---
@@ -107,6 +112,28 @@ class Ledger:
             return False
         self.advance(domain, "Pitched", pitch_variant=pitch_variant)
         return True
+
+    def record_send_failure(self, domain: str, detail: str | None = None) -> int:
+        """Note a failed send: the Brand stays Queued (retryable) but its attempt counter
+        increments and a history row is appended. Returns the new attempt count so the caller
+        can cap retries (a forever-failing store should eventually be marked Dead, not
+        re-launched every run). Raises UnknownBrand if the Brand was never recorded."""
+        row = self._db.execute(
+            "SELECT attempts FROM brands WHERE domain = ?", (domain,)
+        ).fetchone()
+        if row is None:
+            raise UnknownBrand(domain)
+        n = (row["attempts"] or 0) + 1
+        now = _now()
+        self._db.execute(
+            "UPDATE brands SET attempts = ?, updated_at = ? WHERE domain = ?", (n, now, domain)
+        )
+        self._db.execute(
+            "INSERT INTO stage_history (domain, stage, at, note) VALUES (?, 'Queued', ?, ?)",
+            (domain, now, f"send_failed: {detail}" if detail else "send_failed"),
+        )
+        self._db.commit()
+        return n
 
     # --- reads ---
     def can_pitch(self, domain: str) -> bool:

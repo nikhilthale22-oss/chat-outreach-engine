@@ -47,13 +47,20 @@ def main(argv=None) -> None:
     ap.add_argument("--db", default="ledger.db")
     ap.add_argument("--concurrency", type=int, default=8)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--max-attempts", type=int, default=4,
+                    help="mark a Brand Dead after this many failed sends (stops forever-retry)")
+    ap.add_argument("--vendors", default="tidio",
+                    help="comma-separated vendors to enable (default tidio; gorgias send is "
+                         "not yet delivery-confirmed)")
     args = ap.parse_args(argv)
 
     domains = _read_domains(args.domains_file)
     ledger = Ledger(args.db)
-    adapters = {"gorgias": GorgiasAdapter(), "tidio": TidioAdapter()}
-    runner = BatchRunner(ledger, adapters, args.email,
-                         concurrency=args.concurrency, on_event=lambda m: print(m, flush=True))
+    available = {"gorgias": GorgiasAdapter(), "tidio": TidioAdapter()}
+    enabled = {v.strip() for v in args.vendors.split(",") if v.strip()}
+    adapters = {k: a for k, a in available.items() if k in enabled}
+    runner = BatchRunner(ledger, adapters, args.email, concurrency=args.concurrency,
+                         max_attempts=args.max_attempts, on_event=lambda m: print(m, flush=True))
 
     report = runner.run(domains, dry_run=not args.send, limit=args.limit)
 

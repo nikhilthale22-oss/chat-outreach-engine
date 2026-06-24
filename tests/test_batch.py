@@ -22,13 +22,14 @@ class FakeAssessor:
 
 
 class FakeAdapter:
-    def __init__(self, sent: bool = True):
+    def __init__(self, sent: bool = True, detail: str | None = None):
         self._sent = sent
+        self._detail = detail if detail is not None else ("ok" if sent else "boom")
         self.calls: list[tuple] = []
 
     def send(self, domain, pitch, reply_email):
         self.calls.append((domain, pitch))
-        return SendResult(self._sent, "ok" if self._sent else "boom")
+        return SendResult(self._sent, self._detail)
 
 
 def assess(domain, fetched=True, has_widget=True, vendor="tidio", has_ai=False, gate=True):
@@ -136,3 +137,39 @@ def test_duplicate_input_domains_are_deduped(tmp_path):
     report = runner.run(["ex.com", "EX.com", " ex.com "])
     assert len([o for o in report.outcomes if o.domain == "ex.com"]) == 1
     assert adapter.calls == [("ex.com", "PITCH-A")]
+
+
+def test_terminal_send_failure_is_marked_dead_not_retried(tmp_path):
+    led = Ledger(tmp_path / "l.db")
+    adapter = FakeAdapter(sent=False, detail="prechat_blocked_required_fields")
+    runner = BatchRunner(led, {"tidio": adapter}, "me@x.com",
+                         assessor=FakeAssessor({"ex.com": assess("ex.com")}), pitches=PITCHES)
+    report = runner.run(["ex.com"])
+    assert report.counts.get("dead") == 1
+    assert led.get_stage("ex.com") == "Dead"   # never retried again
+
+
+def test_transient_send_failures_are_capped_and_then_dead(tmp_path):
+    led = Ledger(tmp_path / "l.db")
+    adapter = FakeAdapter(sent=False, detail="no_tidio_api")
+    table = {"ex.com": assess("ex.com")}
+    runner = BatchRunner(led, {"tidio": adapter}, "me@x.com",
+                         assessor=FakeAssessor(table), pitches=PITCHES, max_attempts=2)
+    runner.run(["ex.com"])
+    assert led.get_stage("ex.com") == "Queued"  # 1st failure: still retryable
+    report = runner.run(["ex.com"])
+    assert led.get_stage("ex.com") == "Dead"    # 2nd failure hits the cap -> Dead
+    assert report.counts.get("dead") == 1
+
+
+def test_limit_applies_to_fresh_work_not_already_done_brands(tmp_path):
+    led = Ledger(tmp_path / "l.db")
+    led.add_brand("done.com")
+    led.advance("done.com", "Dead", note="prior run")
+    adapter = FakeAdapter()
+    table = {"done.com": assess("done.com"), "fresh.com": assess("fresh.com")}
+    runner = BatchRunner(led, {"tidio": adapter}, "me@x.com",
+                         assessor=FakeAssessor(table), pitches=PITCHES)
+    report = runner.run(["done.com", "fresh.com"], dry_run=True, limit=1)
+    # limit=1 should spend its budget on the fresh brand, not be consumed by the done one
+    assert any(o.domain == "fresh.com" and o.action == "would_pitch" for o in report.outcomes)
