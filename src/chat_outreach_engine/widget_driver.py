@@ -64,7 +64,8 @@ class VendorConfig:
     composer_selector: str = "textarea, [contenteditable='true']"
     entry_selector: str = "button, [role='button']"
     entry_strategy: str = "button_texts"
-    widget_frame_marker: str | None = None
+    widget_frame_marker: str | None = None   # resolve the widget iframe by in-frame content (Tawk's about:srcdoc)
+    widget_frame_url: str | None = None       # OR resolve it by a substring of the iframe URL (livechatinc.com, chatra.io)
     confirm_setup_js: str | None = None  # JS run on the page before send, for "callback_flag"
 
 
@@ -247,17 +248,22 @@ class WidgetDriver:
     # ----- surface + confirm ------------------------------------------------------------
 
     def _surface(self, page):
-        """The Page or Frame the composer lives on. When widget_frame_marker is set, find the frame
-        that contains it (the widget's same-origin iframe, which has no stable URL/name) and return
-        it; otherwise the page. Waits briefly because the frame appears after the widget opens."""
+        """The Page or Frame the composer lives on. A widget that renders in an iframe is resolved
+        either by a substring of the iframe URL (widget_frame_url, e.g. livechatinc.com / chatra.io)
+        or, when the iframe has no stable URL (Tawk's about:srcdoc), by an in-frame content selector
+        (widget_frame_marker). Otherwise the page. Waits briefly because the frame appears after the
+        widget opens."""
         marker = self.config.widget_frame_marker
-        if not marker:
+        url_sub = self.config.widget_frame_url
+        if not marker and not url_sub:
             return page
         for _ in range(24):  # heavy stores render the widget iframe slowly; wait up to ~12s
             try:
                 for fr in page.frames:
                     try:
-                        if fr.locator(marker).count() > 0:
+                        if url_sub and url_sub in (fr.url or ""):
+                            return fr
+                        if marker and fr.locator(marker).count() > 0:
                             return fr
                     except Exception:
                         continue

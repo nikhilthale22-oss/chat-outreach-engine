@@ -9,10 +9,12 @@ See `CONTEXT.md` for the glossary, `docs/adr/` for decisions, `CHANGELOG.md` for
 
 ## Status (2026-06-27)
 
-Engine works end-to-end. Vendors are now configs over a shared `WidgetDriver` (ADR-0007): Tidio
-(live) and **Tawk** (built this session, verified live to the composer on standard widgets). The
-gate filters dead/expired accounts over HTTP per vendor before spending a browser launch. 96 tests
-green.
+Engine works end-to-end. Vendors are configs over a shared `WidgetDriver` (ADR-0007): Tidio and
+**Tawk** (both real-send proven), plus **LiveChat** and **Chatra** (built + verified to the composer).
+The driver resolves iframe widgets by URL (livechatinc.com / chatra.io) or content marker (Tawk). The
+gate filters dead/expired accounts over HTTP per vendor. 101 tests green. The two biggest unbuilt
+vendors, Zendesk (174 stores) and Intercom (32), are API-send (a Gorgias-style path) - see
+`research/vendor-landscape.md`.
 
 **The honest foundation, measured (random N=40, production path):** of the ~2,640 apparel-Tidio
 pool, ~7.6% are actually deliverable (~200 live stores) - the rest are dead accounts whose
