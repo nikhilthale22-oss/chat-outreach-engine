@@ -15,7 +15,14 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .adapters import ChatraAdapter, GorgiasAdapter, LiveChatAdapter, TawkAdapter, TidioAdapter
+from .adapters import (
+    ChatraAdapter,
+    GorgiasAdapter,
+    IntercomAdapter,
+    LiveChatAdapter,
+    TawkAdapter,
+    TidioAdapter,
+)
 from .batch import BatchRunner
 from .ledger import Ledger
 
@@ -59,7 +66,7 @@ def main(argv=None) -> None:
     domains = _read_domains(args.domains_file)
     ledger = Ledger(args.db)
     available = {"gorgias": GorgiasAdapter(), "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
-                 "livechat": LiveChatAdapter(), "chatra": ChatraAdapter()}
+                 "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(), "intercom": IntercomAdapter()}
     enabled = {v.strip() for v in args.vendors.split(",") if v.strip()}
     adapters = {k: a for k, a in available.items() if k in enabled}
     runner = BatchRunner(ledger, adapters, args.email, concurrency=args.concurrency,
