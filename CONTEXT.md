@@ -64,9 +64,11 @@ Chat Widget is, whether it has AI, and whether it passes the Live Re-verify Gate
 _Avoid_: scan, check, detection (bare)
 
 **Live Re-verify Gate**:
-The check, against the Brand's live HTML, that its Chat Widget will actually load under
-automation (for Tidio: a direct code.tidio.co loader tag, not a dynamic app-embed). Filters
-out false positives and un-loadable stores before a browser launch is spent.
+The check, against the Brand's live site, that its Chat Widget will actually load under
+automation, before a browser launch is spent. For Tidio: a direct code.tidio.co loader tag
+(not a dynamic app-embed) AND the loader is actually served - a 200, not the 403/404 a dead
+or expired account returns even though its static tag lingers in the HTML. Filters out false
+positives, un-loadable stores, and dead accounts cheaply.
 _Avoid_: filter, validation, verification (bare)
 
 **Variant**:
