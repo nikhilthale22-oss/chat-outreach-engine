@@ -44,6 +44,7 @@ class Assessment:
     vendor: str | None
     has_ai: bool
     gate_passed: bool       # live re-verify: this vendor will really load under automation
+    gate_reason: str | None = None  # why the gate failed (distinguishes dead vs retryable)
 
 
 @dataclass(frozen=True)
@@ -93,14 +94,64 @@ def live_gate(vendor: str | None, html: str) -> bool:
     return True
 
 
-class LiveAssessor:
-    """Fetches a Brand's homepage ONCE and derives vendor + has_ai + the live gate."""
+# Loader-liveness states. The static tag can linger in a store's HTML long after its Tidio
+# account expires (the loader then 403s), so passing the gate also requires the loader to be
+# actually served. UNKNOWN is deliberately NOT dead - a transient blip must never false-kill
+# a live store (it stays retryable, like a failed homepage fetch).
+LOADER_LIVE = "live"
+LOADER_DEAD = "dead"
+LOADER_UNKNOWN = "unknown"
 
-    def __init__(self) -> None:
+
+def _tidio_loader_url(html: str) -> str | None:
+    """The full https URL of Tidio's widget loader in this HTML, or None. Forces https so the
+    common protocol-relative `//code.tidio.co/<key>.js` form is fetchable."""
+    if not html:
+        return None
+    m = re.search(r"code\.tidio\.co/[a-z0-9]+\.js", html, re.I)
+    return ("https://" + m.group(0)) if m else None
+
+
+def loader_liveness(url: str | None, fetch=None) -> str:
+    """Is the widget loader actually being served? GET it (following redirects): 200 -> LIVE;
+    401/403/404/410 (suspended / expired / removed account) -> DEAD; timeout, 5xx, or any
+    connection error -> UNKNOWN (retryable, never treated as dead)."""
+    if not url:
+        return LOADER_UNKNOWN
+    fetch = fetch or _loader_http_status
+    try:
+        status = fetch(url)
+    except Exception:
+        return LOADER_UNKNOWN
+    if status == 200:
+        return LOADER_LIVE
+    if status in (401, 403, 404, 410):
+        return LOADER_DEAD
+    return LOADER_UNKNOWN
+
+
+def _loader_http_status(url: str) -> int:
+    import requests
+    import urllib3
+
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    r = requests.get(url, timeout=8, allow_redirects=True, verify=False,
+                     headers={"User-Agent": _UA})
+    return r.status_code
+
+
+class LiveAssessor:
+    """Fetches a Brand's homepage ONCE and derives vendor + has_ai + the live gate. For Tidio
+    the gate also verifies the loader is actually live (filters expired/removed accounts whose
+    static tag still lingers in the HTML). Both fetches are injectable for testing."""
+
+    def __init__(self, fetch=None, loader_fetch=None) -> None:
         signatures.compile_patterns()
+        self._fetch_fn = fetch or self._fetch
+        self._loader_fetch = loader_fetch   # None -> real HTTP GET of the loader
 
     def __call__(self, domain: str) -> Assessment:
-        html = self._fetch(domain)
+        html = self._fetch_fn(domain)
         if not html:
             return Assessment(domain, False, False, None, False, False)
         hits = signatures.match_html(html)
@@ -108,7 +159,15 @@ class LiveAssessor:
             return Assessment(domain, True, False, None, False, False)
         vendor = hits[0]["vendor"]
         has_ai = any(h.get("category") == AI_CATEGORY for h in hits)
-        return Assessment(domain, True, True, vendor, has_ai, live_gate(vendor, html))
+        if not live_gate(vendor, html):
+            return Assessment(domain, True, True, vendor, has_ai, False)
+        if vendor == "tidio":
+            state = loader_liveness(_tidio_loader_url(html), fetch=self._loader_fetch)
+            if state == LOADER_DEAD:
+                return Assessment(domain, True, True, vendor, has_ai, False, "tidio loader dead")
+            if state == LOADER_UNKNOWN:
+                return Assessment(domain, True, True, vendor, has_ai, False, "loader unknown")
+        return Assessment(domain, True, True, vendor, has_ai, True)
 
     @staticmethod
     def _fetch(domain: str) -> str:
@@ -193,8 +252,14 @@ class BatchRunner:
                 report.add(Outcome(a.domain, "dead", "already has AI", a.vendor))
                 continue
             if not a.gate_passed:
-                self._ledger.advance(a.domain, "Dead", note="live re-verify failed")
-                report.add(Outcome(a.domain, "dead", "live re-verify failed", a.vendor))
+                if a.gate_reason == "loader unknown":
+                    # transient loader check - leave Queued (retryable), never kill a maybe-live store
+                    report.add(Outcome(a.domain, "loader_unknown",
+                                       "loader liveness unknown (retryable)", a.vendor))
+                    continue
+                reason = a.gate_reason or "live re-verify failed"
+                self._ledger.advance(a.domain, "Dead", note=reason)
+                report.add(Outcome(a.domain, "dead", reason, a.vendor))
                 continue
             if a.vendor not in self._adapters:
                 self._ledger.advance(a.domain, "Dead", note=f"no adapter for {a.vendor}")
