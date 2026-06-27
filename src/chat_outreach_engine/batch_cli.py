@@ -18,6 +18,7 @@ import sys
 from .adapters import (
     ChatraAdapter,
     GorgiasAdapter,
+    HelpScoutAdapter,
     IntercomAdapter,
     LiveChatAdapter,
     TawkAdapter,
@@ -66,7 +67,8 @@ def main(argv=None) -> None:
     domains = _read_domains(args.domains_file)
     ledger = Ledger(args.db)
     available = {"gorgias": GorgiasAdapter(), "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
-                 "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(), "intercom": IntercomAdapter()}
+                 "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(), "intercom": IntercomAdapter(),
+                 "helpscout": HelpScoutAdapter()}
     enabled = {v.strip() for v in args.vendors.split(",") if v.strip()}
     adapters = {k: a for k, a in available.items() if k in enabled}
     runner = BatchRunner(ledger, adapters, args.email, concurrency=args.concurrency,

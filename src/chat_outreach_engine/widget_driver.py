@@ -257,18 +257,31 @@ class WidgetDriver:
         url_sub = self.config.widget_frame_url
         if not marker and not url_sub:
             return page
+        comp = self._scoped(self.config.widget_scope, self.config.composer_selector)
         for _ in range(24):  # heavy stores render the widget iframe slowly; wait up to ~12s
+            candidates = []
             try:
                 for fr in page.frames:
+                    if fr == page.main_frame:   # the widget iframe is never the top frame; a marker
+                        continue                # like #beacon-container can also sit in the host page
                     try:
-                        if url_sub and url_sub in (fr.url or ""):
-                            return fr
-                        if marker and fr.locator(marker).count() > 0:
-                            return fr
+                        if (url_sub and url_sub in (fr.url or "")) or \
+                           (marker and fr.locator(marker).count() > 0):
+                            candidates.append(fr)
                     except Exception:
                         continue
             except Exception:
-                pass
+                candidates = []
+            # When several frames match (HelpScout renders two Beacon iframes), prefer the one that
+            # actually holds the composer.
+            for fr in candidates:
+                try:
+                    if fr.locator(comp).count() > 0:
+                        return fr
+                except Exception:
+                    continue
+            if candidates:
+                return candidates[0]
             try:
                 page.wait_for_timeout(500)
             except Exception:

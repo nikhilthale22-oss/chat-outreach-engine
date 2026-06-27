@@ -12,6 +12,7 @@ import argparse
 from .adapters import (
     ChatraAdapter,
     GorgiasAdapter,
+    HelpScoutAdapter,
     IntercomAdapter,
     LiveChatAdapter,
     ShopifyInboxAdapter,
@@ -42,7 +43,7 @@ def main(argv=None) -> None:
                         {"gorgias": GorgiasAdapter(), "shopify-inbox": ShopifyInboxAdapter(),
                          "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
                          "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(),
-                         "intercom": IntercomAdapter()})
+                         "intercom": IntercomAdapter(), "helpscout": HelpScoutAdapter()})
     out = injector.process(
         domain, args.pitch, args.email, pitch_variant=args.variant, dry_run=not args.send
     )
