@@ -155,6 +155,8 @@ class WidgetDriver:
 
         with sync_playwright() as p:
             browser = None
+            page = None
+            surface = None
             try:
                 channel = os.environ.get("BROWSER_CHANNEL", "chrome") or None
                 browser = p.chromium.launch(
@@ -222,7 +224,7 @@ class WidgetDriver:
                 # callback flushes (a bare time.sleep does NOT pump the sync driver).
                 deadline = time.time() + 6
                 while time.time() < deadline:
-                    if self._confirmed(page, frames, token):
+                    if self._confirmed(page, surface, frames, token):
                         return SendResult(True, "delivered")
                     page.wait_for_timeout(250)
                 if prechat_blocked:
@@ -231,7 +233,8 @@ class WidgetDriver:
             except Exception as e:
                 # Deliver-then-raise: if the Pitch already hit the wire, report it honestly so the
                 # Ledger advances and we never re-pitch (double-send) the same store next run.
-                if self._confirmed(page, frames, token):
+                # page may be unbound if the failure was during launch/context, before it was set.
+                if page is not None and self._confirmed(page, surface, frames, token):
                     return SendResult(True, "delivered_then_error")
                 return SendResult(False, f"{type(e).__name__}: {str(e)[:160]}")
             finally:
@@ -266,9 +269,13 @@ class WidgetDriver:
                 break
         return page  # frame never appeared -> composer lookup fails -> no_composer (retryable)
 
-    def _confirmed(self, page, frames, token):
-        """Was the Pitch really sent? wire_token: a marker websocket frame carries the token.
-        callback_flag: the vendor's visitor-message callback recorded our token to window.__cw_confirm."""
+    def _confirmed(self, page, surface, frames, token):
+        """Was the Pitch really sent?
+        wire_token  : a marker websocket frame carries the token (Tidio; ADR-0003).
+        callback_flag: the vendor's visitor-message callback recorded our token to window.__cw_confirm.
+        dom_echo    : our token now appears in the rendered conversation AND the composer has cleared
+                      (Tawk). The composer-empty clause is what distinguishes a sent message from the
+                      token merely sitting un-sent in the composer, so it never false-positives."""
         cs = self.config.confirm_strategy
         if cs == "wire_token":
             return self._delivered(frames, token, self.config.confirm_frame_marker)
@@ -278,6 +285,20 @@ class WidgetDriver:
             except Exception:
                 return False
             return bool(blob) if not token else (token in blob)
+        if cs == "dom_echo":
+            if surface is None or not token:
+                return False
+            try:
+                shown = surface.evaluate(
+                    "() => (document.body && document.body.innerText) || ''")
+                comp = self._composer(surface)
+                composer_empty = True
+                if comp is not None:
+                    val = comp.evaluate("el => (el.value != null ? el.value : (el.textContent || ''))")
+                    composer_empty = not (val or "").strip()
+            except Exception:
+                return False
+            return (token in shown) and composer_empty
         return False
 
     def _handle_email_gate(self, surface, page, frames, token, reply_email) -> bool:
@@ -305,7 +326,7 @@ class WidgetDriver:
                 except Exception:
                     pass
             time.sleep(3)
-            if not self._confirmed(page, frames, token):
+            if not self._confirmed(page, surface, frames, token):
                 # Resend nudge: read text generically (a contenteditable has no input_value())
                 # and NEVER let a recovery error abort the send.
                 try:
@@ -320,7 +341,7 @@ class WidgetDriver:
                     pass
             # If a required field (phone/consent) still blocks Send, flag it distinctly so the
             # batch runner routes this store out of the retry loop.
-            if not self._confirmed(page, frames, token):
+            if not self._confirmed(page, surface, frames, token):
                 try:
                     sb = self._send_button(surface)
                     if sb is not None and sb.is_disabled(timeout=500):

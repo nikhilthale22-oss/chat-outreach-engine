@@ -83,12 +83,22 @@ we saw with Tidio. So the gate + a fresh tech-filtered list are both needed for 
   ready_predicate `window.Tawk_API && window.Tawk_API.maximize`; entry_labels ("New Conversation", ...);
   composer `textarea.tawk-chatinput-editor`; not_ready_detail `no_tawk_api`; loader gate as above.
 
-## Verified against the shipped code (no sends)
+## Verified end to end with a real send (allurepack.com, 2026-06-27)
 
-The real TawkAdapter / WidgetDriver(TAWK) code (not just the probe scripts) was run against the 3 live
-stores: it resolves the iframe, installs the confirm hook, clicks the entry, and reaches a VISIBLE
-composer on both standard-widget stores (fossilageminerals, allurepack). The production-path gate also
-correctly passes the 3 live stores and fails app-embed stores with no direct loader.
+The real TawkAdapter / WidgetDriver(TAWK) code (not the probe scripts) was run against the live stores:
+it resolves the iframe, clicks the entry, and reaches a VISIBLE composer on both standard-widget stores.
+Then a real HITL send delivered the FULL pitch into allurepack.com's Tawk chat - confirmed by screenshot
+(the pitch posted in the thread, composer cleared) and by the ledger advancing to Pitched. The
+production-path gate also passes the 3 live stores and fails app-embed stores with no direct loader.
+
+Two things the real send taught us:
+- **onChatMessageVisitor (registered post-load) did NOT fire**, so the first send reported a FALSE
+  no_delivery_confirmation even though the message visibly sent. Confirm switched to **dom_echo**: our
+  token appears in the rendered thread AND the composer has cleared (the composer-empty clause is what
+  stops the un-sent token in the composer from false-confirming). Re-run reported "pitched - sent".
+- A latent bug: the deliver-then-raise handler referenced `page`/`surface` which are unbound if the
+  browser launch throws first (the launch failed once because the adapter defaults BROWSER_CHANNEL to
+  "chrome"; the box has bundled chromium). Both are now initialised to None and guarded.
 
 ## Known limitation: the "help center" widget variant
 
@@ -97,10 +107,10 @@ screen with no composer until deeper in. The shipped code resolves its frame (vi
 root) and clicks the entry, but its composer appears via a different flow, so we do not reach it. Standard
 widgets (the common case) work. This variant is a follow-up, not a blocker.
 
-## Open (one real HITL send, like Tidio's talleyandtwine - no test store)
+## Open (after delivery proven)
 
-The only thing left to finalise delivery is one genuine pitch into one real standard-widget tawk store,
-run by Nikhil, to confirm (a) a programmatic Enter actually transmits and (b) onChatMessageVisitor fires so
-the callback-flag confirm reports honestly. Reply-capture (does a merchant reply ever reach us) stays the
-project-wide open question; for tawk the candidate path is add_init_script visitor-email injection, to be
-settled deliberately later - NOT via a trial test store (that approach already failed for Tidio).
+- The "help center" widget variant (mohifashion): resolves the frame + clicks the entry but routes the
+  composer differently. Follow-up if that variant turns out to be common.
+- Reply-capture (does a merchant reply ever reach us) stays the project-wide open question; for tawk the
+  candidate path is add_init_script visitor-email injection, to be settled deliberately later - NOT via a
+  trial test store (that approach already failed for Tidio).

@@ -9,8 +9,9 @@ not hand-written flow (ADR-0007). Reverse-engineered live against real stores (r
   The driver resolves that frame by content: the frame containing `.tawk-chatinput-editor`.
 - Flow: maximize() to open -> the Home screen shows a "New Conversation" entry -> click it -> the
   composer `textarea.tawk-chatinput-editor` (the visible one of two) -> type -> Enter ("Type here and
-  press enter.." literally tells the visitor to). Confirm via the onChatMessageVisitor callback, which
-  fires after the visitor's message is sent (installed as confirm_setup_js).
+  press enter.." literally tells the visitor to). Confirm via dom_echo: a sent message appears in the
+  conversation and clears the composer, so we confirm when our token is in the rendered thread AND the
+  composer is empty. (onChatMessageVisitor, registered post-load, did NOT fire on a real send.)
 - Email gate: the default widget has none (composer is immediate). email_strategy="none". Leaving a
   reply address for tawk is a separate, unproven reply-capture concern (see research/tawk-injection.md).
 - Coverage caveat: only stores embedding a direct embed.tawk.to/<pid>/<wid> loader pass the live gate;
@@ -33,7 +34,7 @@ TAWK = VendorConfig(
                   "Chat with us", "Start chat"),
     email_strategy="none",
     email_api_js=None,
-    confirm_strategy="callback_flag",
+    confirm_strategy="dom_echo",
     confirm_frame_marker=None,
     composer_selector="textarea.tawk-chatinput-editor",
     entry_selector="button, [role='button']",
@@ -43,10 +44,6 @@ TAWK = VendorConfig(
     # composer would be chicken-and-egg (the composer only appears after clicking the entry,
     # which needs the frame). The panel root is present on the Home screen of every variant.
     widget_frame_marker=".tawk-chat-panel",
-    confirm_setup_js=("window.__cw_confirm = window.__cw_confirm || [];"
-                      " try { window.Tawk_API.onChatMessageVisitor = function(m) {"
-                      " window.__cw_confirm.push(typeof m === 'string' ? m : JSON.stringify(m)); }; }"
-                      " catch(e) {}"),
 )
 
 

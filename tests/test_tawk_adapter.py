@@ -38,10 +38,11 @@ def test_config_drives_the_tawk_composer_by_text_entry():
     assert "New Conversation" in TAWK.entry_labels
 
 
-def test_config_confirms_via_the_visitor_message_callback():
-    assert TAWK.confirm_strategy == "callback_flag"
-    assert "onChatMessageVisitor" in TAWK.confirm_setup_js
-    assert "__cw_confirm" in TAWK.confirm_setup_js
+def test_config_confirms_via_dom_echo():
+    # onChatMessageVisitor (registered post-load) did not fire on a real send; a sent message
+    # instead lands in the rendered thread and clears the composer, which dom_echo checks.
+    assert TAWK.confirm_strategy == "dom_echo"
+    assert TAWK.confirm_setup_js is None
 
 
 def test_config_has_no_email_gate_by_default():
