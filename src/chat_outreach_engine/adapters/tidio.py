@@ -36,7 +36,7 @@ from ..proxy import playwright_proxy
 
 WIDGET = "#tidio-chat"  # Tidio's open-shadow-DOM host; scopes us to the widget
 ENTRY_LABELS = ("Chat with us", "Send us a message", "New conversation",
-                "Start a conversation", "Start chat", "Get in touch")
+                "Start a conversation", "Start chat", "Get in touch", "Chat with Lyro")
 
 
 class TidioAdapter:
@@ -206,15 +206,45 @@ class TidioAdapter:
         return None
 
     @staticmethod
-    def _click_entry(page):
+    def _pick_entry_label(button_texts):
+        """Pure entry-label resolver (browserless, unit-tested). Given the visible clickable
+        texts inside the widget, return the on-screen text to click to start a conversation,
+        or None. v3 ENTRY_LABELS are tried first as case-insensitive substrings and return the
+        REAL on-screen text (so a wrapped 'Live Chat with us now' still works). The v4 Lyro
+        Home screen is reached by the 'Chat with Lyro' label, or, as a last resort, the bare
+        'Chat' bottom-nav tab matched EXACTLY - so we never grab a 'chat' buried in another
+        phrase, and a real v3 entry always beats the nav tab."""
+        texts = [t for t in (button_texts or []) if t and t.strip()]
         for label in ENTRY_LABELS:
-            try:
-                btn = page.locator(WIDGET).get_by_text(label, exact=False).first
-                if btn.count() and btn.is_visible(timeout=700):
-                    btn.click(timeout=2000)
-                    return True
-            except Exception:
-                continue
+            ll = label.lower()
+            for t in texts:
+                if ll in t.lower():
+                    return t
+        for t in texts:
+            if t.strip().lower() == "chat":
+                return t
+        return None
+
+    @staticmethod
+    def _click_entry(page):
+        """Reach the composer from a Home/menu screen by clicking an entry. Reads the widget's
+        visible clickable texts, resolves which to click via _pick_entry_label, then clicks
+        that exact element by index. A miss returns False (-> no_composer), never raises."""
+        loc = page.locator(f"{WIDGET} button, {WIDGET} [role='button']")
+        try:
+            texts = loc.all_inner_texts()
+        except Exception:
+            return False
+        picked = TidioAdapter._pick_entry_label(texts)
+        if picked is None:
+            return False
+        try:
+            target = loc.nth(texts.index(picked))
+            if target.is_visible(timeout=2000):
+                target.click(timeout=2000)
+                return True
+        except Exception:
+            pass
         return False
 
     @staticmethod
