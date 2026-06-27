@@ -1,59 +1,69 @@
-"""Pure-helper tests for the Tidio adapter (the send() flow itself needs a live browser and is
-exercised by real runs). _target_url is the seam that lets us point the adapter at an explicit
-URL - a bare domain gets https, an explicit scheme is preserved (http test pages, http-only stores).
+"""Tidio is now a VendorConfig (TIDIO) over the shared WidgetDriver (ADR-0007). These tests lock
+the Tidio-specific data - the scope, readiness, the email/confirm strategies, and the entry labels
+the v4/Lyro fix turns on - and confirm the adapter still delegates under the same public surface.
+The generic driver mechanics live in test_widget_driver.py; the live send() is proven by real runs.
 """
-from chat_outreach_engine.adapters.tidio import TidioAdapter
+from chat_outreach_engine.adapters.tidio import TIDIO, TidioAdapter
+from chat_outreach_engine.widget_driver import WidgetDriver
 
 
-def test_target_url_prefixes_bare_domain_with_https():
-    assert TidioAdapter._target_url("foo.com") == "https://foo.com"
+def test_adapter_delegates_under_the_tidio_vendor():
+    assert TidioAdapter.vendor == "tidio"
+    assert TIDIO.vendor == "tidio"
 
 
-def test_target_url_preserves_explicit_http_scheme():
-    assert TidioAdapter._target_url("http://localhost:8088/") == "http://localhost:8088/"
+def test_config_scopes_to_the_tidio_shadow_host():
+    assert TIDIO.widget_scope == "#tidio-chat"
 
 
-def test_target_url_preserves_explicit_https_scheme():
-    assert TidioAdapter._target_url("https://shop.example.com/page") == "https://shop.example.com/page"
+def test_config_confirms_on_the_wire_frame():
+    assert TIDIO.confirm_strategy == "wire_token"
+    assert TIDIO.confirm_frame_marker == "visitorNewMessage"
 
 
-# _pick_entry_label is the pure, browserless decision the v4/Lyro fix turns on: given the
-# visible clickable texts inside the widget, which one do we click to reach the composer?
-# v3 entry labels (substring, case-insensitive) win first and return the real on-screen text;
-# the v4 Lyro Home screen is reached via 'Chat with Lyro', or as a last resort the bare 'Chat'
-# bottom-nav tab matched EXACTLY (so we never grab 'chat' buried in an unrelated phrase).
+def test_config_reports_no_tidio_api_when_widget_never_comes_up():
+    assert TIDIO.not_ready_detail == "no_tidio_api"
+
+
+def test_config_attaches_email_via_set_contact_properties():
+    assert TIDIO.email_strategy == "prechat_then_api"
+    assert "setContactProperties" in TIDIO.email_api_js
+
+
+# The v4/Lyro fix, locked: given the widget's visible texts, the right entry to click to reach
+# the composer. v3 labels (substring, case-insensitive) return the real on-screen text; the v4
+# Lyro Home screen is reached via 'Chat with Lyro' or, as a last resort, the exact 'Chat' nav tab.
+def _pick(texts):
+    return WidgetDriver._pick_entry_label(TIDIO.entry_labels, texts)
+
+
+def test_config_carries_the_v4_lyro_entry_label():
+    assert "Chat with Lyro" in TIDIO.entry_labels
+
 
 def test_pick_entry_v3_direct_label():
-    assert TidioAdapter._pick_entry_label(["Chat with us", "Send us a message"]) == "Chat with us"
+    assert _pick(["Chat with us", "Send us a message"]) == "Chat with us"
 
 
 def test_pick_entry_v3_substring_returns_onscreen_text():
-    assert TidioAdapter._pick_entry_label(["Live Chat with us now"]) == "Live Chat with us now"
+    assert _pick(["Live Chat with us now"]) == "Live Chat with us now"
 
 
 def test_pick_entry_v4_lyro_entry():
-    assert TidioAdapter._pick_entry_label(["Chat with Lyro", "Powered by Tidio"]) == "Chat with Lyro"
+    assert _pick(["Chat with Lyro", "Powered by Tidio"]) == "Chat with Lyro"
 
 
 def test_pick_entry_v4_nav_chat_tab_exact_last_resort():
-    assert TidioAdapter._pick_entry_label(["Home", "Chat", "Help"]) == "Chat"
+    assert _pick(["Home", "Chat", "Help"]) == "Chat"
 
 
 def test_pick_entry_none_when_no_entry_present():
-    assert TidioAdapter._pick_entry_label(["Home", "Help", "FAQ"]) is None
+    assert _pick(["Home", "Help", "FAQ"]) is None
 
 
 def test_pick_entry_does_not_grab_chat_inside_a_phrase():
-    # 'Chatbot FAQ' contains 'chat' but is not a v3 entry nor the exact nav tab -> no match.
-    assert TidioAdapter._pick_entry_label(["Chatbot FAQ", "Home"]) is None
-
-
-def test_pick_entry_tolerates_empty_and_falsy_texts():
-    assert TidioAdapter._pick_entry_label([]) is None
-    assert TidioAdapter._pick_entry_label([None, "", "   "]) is None
+    assert _pick(["Chatbot FAQ", "Home"]) is None
 
 
 def test_pick_entry_v3_label_wins_over_bare_chat_nav():
-    # When a real v3 entry AND a bare 'Chat' nav are both present, the entry wins (we must not
-    # mis-click the nav tab when a proper start-conversation button exists).
-    assert TidioAdapter._pick_entry_label(["Chat", "Start a conversation"]) == "Start a conversation"
+    assert _pick(["Chat", "Start a conversation"]) == "Start a conversation"

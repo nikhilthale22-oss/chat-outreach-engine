@@ -2,9 +2,9 @@
 
 ## Next up (scale by breadth)
 
-- **Slice 2: generalize the adapter** into a shared `WidgetDriver` + per-vendor `VendorConfig`, prove byte-for-byte parity with the current Tidio adapter on a known-good store (talleyandtwine), then retire the hand-written class. New ADR: "vendors are generated from a config + shared driver, not hand-written" (reconcile the CONTEXT "one Adapter per vendor" line).
-- **Slice 3: pluggable delivery confirmation** (ws_frame default + request-body watch + dom_echo + none).
-- **Slice 4: submit_strategy / email_attach / iframe support**, proven by standing up a second vendor (Crisp) end to end.
+- **Slice 2 parity run (HITL).** WidgetDriver + VendorConfig is built and parity-checked offline (config-generated selectors/JS diffed byte-for-byte against the old Tidio literals; 82 tests green). Still owed: one live Tidio send through `WidgetDriver(TIDIO)` on talleyandtwine to confirm the lifted browser flow behaves identically. Nikhil runs the real send.
+- **Slice 3: pluggable delivery confirmation** (wire_token default + request-body watch + dom_echo + none). `confirm_strategy` already exists on VendorConfig with `wire_token`/`none`; add the other confirmers.
+- **Slice 4: stand up a second vendor (Crisp) end to end** as a `VendorConfig` (the real proof the breadth lever works with zero new flow code). May need a `postsend_form` email strategy and iframe support; add to the driver as Crisp demands them, test-first.
 
 ## Data / pool
 
@@ -12,8 +12,7 @@
 
 ## Open decisions (Nikhil)
 
-- Push the local gate-liveness + ADR-0005 commits (Slice 1 already pushed).
-- Re-run the now-efficient scale on the ~200 live apparel stores to bank pitches, or go straight to Slice 2.
+- Run the Slice 2 parity send on talleyandtwine, then move to Slice 4 (Crisp) for the real breadth proof, or first re-run the now-efficient scale on the ~200 live apparel stores to bank pitches.
 
 ## Blocked / unproven
 

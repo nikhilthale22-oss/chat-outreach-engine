@@ -1,308 +1,45 @@
-"""TidioAdapter: the real Adapter for Tidio live-chat widgets.
+"""TidioAdapter: the Adapter for Tidio live-chat widgets.
 
-Reverse-engineered live (research/tidio-injection.md). The findings that shape this:
+Tidio is the DOM-drive family's reference vendor, so it is expressed as a VendorConfig (TIDIO)
+over the shared WidgetDriver rather than as hand-written flow (ADR-0007). The reverse-engineering
+that shapes the config (research/tidio-injection.md):
 
-- Tidio's widget renders in OPEN SHADOW DOM under a single host, div#tidio-chat. Playwright
-  pierces open shadow roots, so we scope every interaction to "#tidio-chat" - that keeps us on
-  the widget and off the page's own forms (e.g. a Klaviyo newsletter with its own email field;
-  unscoped, input[placeholder*=email] matches 3 fields, scoped it matches the 1 right one).
-- messageFromVisitor()/messageFromOperator() are UI-simulation only; they do NOT transmit. The
-  real path is to drive the widget like a visitor: open -> (Home) click an entry like
-  "Chat with us" -> type into the composer -> if a pre-chat form appears, fill the widget's
-  email field and Send. The held message then flushes.
-- A real send emits a "visitorNewMessage" websocket frame (with a server messageId). We capture
-  framesent and only report sent=True when we SEE that frame carry our text - so SendResult is
-  honest (no false positives). No CAPTCHA anywhere.
-
-Hardened after an adversarial review for volume use (no false-negatives -> no double-send):
-the final delivery check polls with a driver-pumping wait so a late frame flushes; an exception
-after the wire-confirmed send still reports delivered; the resend nudge can never abort the send;
-the delivery token is always JSON-safe; launch failures return a retryable result, not a raise.
-
-Coverage caveat: only stores that embed Tidio via a direct code.tidio.co script tag initialise
-under automation; Shopify app-embed injections do not (-> no_tidio_api, retryable).
-
-Env: HEADED=1 (visible window), TIDIO_DEBUG=1 (screenshot to /tmp/tidio_dbg_sent.png).
+- Tidio's widget renders in OPEN SHADOW DOM under a single host, div#tidio-chat. Playwright pierces
+  open shadow roots, so we scope every interaction to "#tidio-chat" - that keeps us on the widget
+  and off the page's own forms (e.g. a Klaviyo newsletter with its own email field).
+- messageFromVisitor()/messageFromOperator() are UI-simulation only; they do NOT transmit. The real
+  path is to drive the widget like a visitor: open -> (Home) click an entry like "Chat with us" or
+  the v4/Lyro "Chat with Lyro" -> type into the composer -> if a pre-chat form appears, fill the
+  widget's email field and Send. The held message then flushes.
+- A real send emits a "visitorNewMessage" websocket frame; the driver only reports sent=True when it
+  SEES that frame carry our text, so SendResult is honest (no false positives). No CAPTCHA anywhere.
+- Coverage caveat: only stores embedding Tidio via a direct code.tidio.co script tag initialise under
+  automation; Shopify app-embed injections do not (-> no_tidio_api, retryable).
 """
 from __future__ import annotations
 
-import json
-import os
-import re
-import time
-
 from ..injector import SendResult
-from ..proxy import playwright_proxy
+from ..widget_driver import VendorConfig, WidgetDriver
 
-WIDGET = "#tidio-chat"  # Tidio's open-shadow-DOM host; scopes us to the widget
-ENTRY_LABELS = ("Chat with us", "Send us a message", "New conversation",
-                "Start a conversation", "Start chat", "Get in touch", "Chat with Lyro")
+TIDIO = VendorConfig(
+    vendor="tidio",
+    widget_scope="#tidio-chat",
+    ready_predicate="window.tidioChatApi && window.tidioChatApi.readyEventWasFired",
+    ready_fallback_predicate="window.tidioChatApi",
+    ready_timeout_ms=25000,
+    not_ready_detail="no_tidio_api",
+    open_js="window.tidioChatApi.open()",
+    entry_labels=("Chat with us", "Send us a message", "New conversation",
+                  "Start a conversation", "Start chat", "Get in touch", "Chat with Lyro"),
+    email_strategy="prechat_then_api",
+    email_api_js="window.tidioChatApi.setContactProperties({email: e})",
+    confirm_strategy="wire_token",
+    confirm_frame_marker="visitorNewMessage",
+)
 
 
 class TidioAdapter:
     vendor = "tidio"
 
     def send(self, domain: str, pitch: str, reply_email: str) -> SendResult:
-        from playwright.sync_api import sync_playwright
-
-        headed = os.environ.get("HEADED", "").lower() in ("1", "true", "yes")
-        debug = bool(os.environ.get("TIDIO_DEBUG"))
-        url = self._target_url(domain)
-        frames: list = []
-        # Distinctive token we look for on the wire. Prefer a 6+ char run; fall back to the
-        # longest alnum run of any length so it is always pure ASCII (JSON-safe on the wire).
-        words = re.findall(r"[A-Za-z0-9]{6,}", pitch) or re.findall(r"[A-Za-z0-9]+", pitch)
-        token = max(words, key=len) if words else None
-
-        with sync_playwright() as p:
-            browser = None
-            try:
-                channel = os.environ.get("BROWSER_CHANNEL", "chrome") or None
-                browser = p.chromium.launch(
-                    headless=not headed, channel=channel,
-                    args=["--disable-blink-features=AutomationControlled"],
-                )
-                page = browser.new_context(
-                    viewport={"width": 1366, "height": 900}, locale="en-US",
-                    proxy=playwright_proxy(),
-                    user_agent=("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"),
-                ).new_page()
-                page.on("websocket",
-                        lambda ws: ws.on("framesent", lambda pl: frames.append(pl)))
-
-                page.goto(url, wait_until="domcontentloaded", timeout=45000)
-                ready = page.evaluate(
-                    """async () => {
-                        const t0 = Date.now();
-                        while (Date.now() - t0 < 25000) {
-                            const a = window.tidioChatApi;
-                            if (a && a.readyEventWasFired) return true;
-                            await new Promise(r => setTimeout(r, 300));
-                        }
-                        return !!window.tidioChatApi;
-                    }"""
-                )
-                if not ready:
-                    return SendResult(False, "no_tidio_api")
-
-                page.evaluate("() => { try { window.tidioChatApi.open(); } catch(_){} }")
-                time.sleep(2.5)
-                self._dismiss_site_overlays(page)
-
-                composer = self._composer(page)
-                if composer is None:
-                    self._click_entry(page)          # Home screen: composer is behind an entry
-                    time.sleep(2)
-                    composer = self._composer(page)
-                if composer is None:
-                    return SendResult(False, "no_composer")
-
-                # Type the pitch, sending newlines as Shift+Enter (soft line breaks) so an
-                # embedded \n does not submit early and spill the rest into the next field.
-                composer.click()
-                for i, line in enumerate(pitch.split("\n")):
-                    if i:
-                        page.keyboard.press("Shift+Enter")
-                    page.keyboard.type(line, delay=6)
-                time.sleep(0.4)
-                composer.press("Enter")
-                time.sleep(2)
-
-                prechat_blocked = False
-                email = page.locator(
-                    f"{WIDGET} input[type='email'], {WIDGET} input[placeholder*='email' i]"
-                ).first
-                if email.count() and email.is_visible(timeout=2000):
-                    # Some pre-chat surveys also require a name; fill it if present (no-op else).
-                    self._fill_name(page)
-                    email.fill(reply_email, timeout=8000, force=True)
-                    send_btn = self._send_button(page)
-                    if send_btn is not None:
-                        try:
-                            send_btn.click(timeout=4000, force=True)
-                        except Exception:
-                            pass
-                    time.sleep(3)
-                    if not self._delivered(frames, token):
-                        # Resend nudge: read text generically (a contenteditable has no
-                        # input_value()) and NEVER let a recovery error abort the send.
-                        try:
-                            c2 = self._composer(page)
-                            if c2 is not None:
-                                txt = c2.evaluate(
-                                    "el => (el.value != null ? el.value : (el.textContent || ''))")
-                                if (txt or "").strip():
-                                    c2.press("Enter")
-                                    time.sleep(2)
-                        except Exception:
-                            pass
-                    # If a required field (phone/consent) still blocks Send, flag it distinctly
-                    # so the batch runner routes this store out of the retry loop.
-                    if not self._delivered(frames, token):
-                        try:
-                            sb = self._send_button(page)
-                            if sb is not None and sb.is_disabled(timeout=500):
-                                prechat_blocked = True
-                        except Exception:
-                            pass
-                else:
-                    # No pre-chat: the Enter already sent. Attach the email via the API so the
-                    # operator can reply. Guard the evaluate: the context may detach post-send.
-                    try:
-                        page.evaluate(
-                            "(e) => { try { window.tidioChatApi.setContactProperties({email: e}); }"
-                            " catch(_){} }", reply_email,
-                        )
-                    except Exception:
-                        pass
-
-                if debug:
-                    try:
-                        page.screenshot(path="/tmp/tidio_dbg_sent.png")
-                    except Exception:
-                        pass
-
-                # Final confirmation: poll with a driver-pumping wait so a late framesent
-                # callback flushes (a bare time.sleep does NOT pump the sync driver).
-                deadline = time.time() + 6
-                while time.time() < deadline:
-                    if self._delivered(frames, token):
-                        return SendResult(True, "delivered")
-                    page.wait_for_timeout(250)
-                if prechat_blocked:
-                    return SendResult(False, "prechat_blocked_required_fields")
-                return SendResult(False, "no_delivery_confirmation")
-            except Exception as e:
-                # Deliver-then-raise: if the pitch already hit the wire, report it honestly so the
-                # Ledger advances and we never re-pitch (double-send) the same store next run.
-                if self._delivered(frames, token):
-                    return SendResult(True, "delivered_then_error")
-                return SendResult(False, f"{type(e).__name__}: {str(e)[:160]}")
-            finally:
-                if browser:
-                    try:
-                        browser.close()
-                    except Exception:
-                        pass
-
-    @staticmethod
-    def _target_url(domain: str) -> str:
-        """The URL to load for a Brand. A bare domain gets https; an explicit scheme is kept
-        as-is, so the adapter can be pointed at an http test page or an http-only store."""
-        d = (domain or "").strip()
-        if d.startswith("http://") or d.startswith("https://"):
-            return d
-        return "https://" + d
-
-    @staticmethod
-    def _composer(page):
-        loc = page.locator(f"{WIDGET} textarea, {WIDGET} [contenteditable='true']").first
-        try:
-            if loc.count() and loc.is_visible(timeout=1500):
-                return loc
-        except Exception:
-            pass
-        return None
-
-    @staticmethod
-    def _pick_entry_label(button_texts):
-        """Pure entry-label resolver (browserless, unit-tested). Given the visible clickable
-        texts inside the widget, return the on-screen text to click to start a conversation,
-        or None. v3 ENTRY_LABELS are tried first as case-insensitive substrings and return the
-        REAL on-screen text (so a wrapped 'Live Chat with us now' still works). The v4 Lyro
-        Home screen is reached by the 'Chat with Lyro' label, or, as a last resort, the bare
-        'Chat' bottom-nav tab matched EXACTLY - so we never grab a 'chat' buried in another
-        phrase, and a real v3 entry always beats the nav tab."""
-        texts = [t for t in (button_texts or []) if t and t.strip()]
-        for label in ENTRY_LABELS:
-            ll = label.lower()
-            for t in texts:
-                if ll in t.lower():
-                    return t
-        for t in texts:
-            if t.strip().lower() == "chat":
-                return t
-        return None
-
-    @staticmethod
-    def _click_entry(page):
-        """Reach the composer from a Home/menu screen by clicking an entry. Reads the widget's
-        visible clickable texts, resolves which to click via _pick_entry_label, then clicks
-        that exact element by index. A miss returns False (-> no_composer), never raises."""
-        loc = page.locator(f"{WIDGET} button, {WIDGET} [role='button']")
-        try:
-            texts = loc.all_inner_texts()
-        except Exception:
-            return False
-        picked = TidioAdapter._pick_entry_label(texts)
-        if picked is None:
-            return False
-        try:
-            target = loc.nth(texts.index(picked))
-            if target.is_visible(timeout=2000):
-                target.click(timeout=2000)
-                return True
-        except Exception:
-            pass
-        return False
-
-    @staticmethod
-    def _fill_name(page):
-        """Fill a pre-chat name field if the survey requires one (no-op on email-only forms)."""
-        name = page.locator(
-            f"{WIDGET} input[name*='name' i], {WIDGET} input[placeholder*='name' i]"
-        ).first
-        try:
-            if name.count() and name.is_visible(timeout=500):
-                name.fill("Nikhil", timeout=4000, force=True)
-        except Exception:
-            pass
-
-    @staticmethod
-    def _send_button(page):
-        """The widget Send control. Ordered: the proven visible-text 'Send' first, then
-        icon/aria-only variants. First visible match wins; never matches outside #tidio-chat."""
-        candidates = (
-            page.locator(f"{WIDGET} button", has_text=re.compile("send", re.I)),
-            page.locator(f"{WIDGET} button[aria-label*='send' i]"),
-            page.locator(f"{WIDGET} [role='button'][aria-label*='send' i]"),
-        )
-        for loc in candidates:
-            try:
-                first = loc.first
-                if first.count() and first.is_visible(timeout=500):
-                    return first
-            except Exception:
-                continue
-        return None
-
-    @staticmethod
-    def _dismiss_site_overlays(page):
-        """Close page-level modals (newsletter/consent) that can obscure the widget's fields.
-        Scoped OUTSIDE the Tidio widget so we never close the chat itself."""
-        try:
-            page.keyboard.press("Escape")
-        except Exception:
-            pass
-        for sel in ['[class*="klaviyo" i] button[aria-label*="lose" i]',
-                    'button[aria-label="Close dialog" i]', '[id*="onetrust-accept"]',
-                    'button[aria-label*="lose" i]:not(#tidio-chat *)']:
-            try:
-                loc = page.locator(sel).first
-                if loc.count() and loc.is_visible(timeout=300):
-                    loc.click(timeout=800)
-            except Exception:
-                continue
-
-    @staticmethod
-    def _delivered(frames, token):
-        """True iff a visitorNewMessage frame carries our pitch token (raw or JSON-escaped).
-        With no usable token (pitch is all punctuation/non-ASCII, ~never), fall back to the
-        presence of a visitorNewMessage frame, which is the real send event."""
-        esc = json.dumps(token)[1:-1] if token else ""
-        for f in frames:
-            if isinstance(f, str) and "visitorNewMessage" in f:
-                if not token or token in f or (esc and esc in f):
-                    return True
-        return False
+        return WidgetDriver(TIDIO).send(domain, pitch, reply_email)

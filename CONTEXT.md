@@ -29,8 +29,24 @@ _Avoid_: bot, sender, script
 
 **Adapter**:
 The vendor-specific piece that knows how to drive one kind of Chat Widget (open it, get
-past the email box, send the Pitch). One Adapter per vendor.
-_Avoid_: connector, plugin, driver
+past the email box, send the Pitch). One Adapter per vendor at the seam the Injector sees
+(dispatch on vendor to a `send()`), realised two ways: a Vendor Config over the shared
+Widget Driver for the DOM-drive family, or a hand-written class for an API-send vendor that
+does not fit that flow (ADR-0007).
+_Avoid_: connector, plugin
+
+**Widget Driver**:
+The shared engine for the DOM-drive family of Chat Widgets: it owns the one flow they all
+share (launch, open, reach the composer, type the Pitch, pass the email gate, confirm), and
+reads each vendor's specifics from a Vendor Config. Vendors that send through a JS API instead
+of driving the DOM (e.g. Gorgias) are not on it.
+_Avoid_: adapter, browser, runner
+
+**Vendor Config**:
+One DOM-drive vendor's data for the Widget Driver: its widget scope, readiness predicate,
+entry labels, email strategy, and how a send is confirmed. Adding such a vendor is a new
+Vendor Config, not new code.
+_Avoid_: settings, options, profile
 
 **Reply Watcher**:
 The part that notices and records when a Brand replies to a Pitch. Every vendor delivers
