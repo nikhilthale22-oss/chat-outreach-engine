@@ -83,8 +83,24 @@ we saw with Tidio. So the gate + a fresh tech-filtered list are both needed for 
   ready_predicate `window.Tawk_API && window.Tawk_API.maximize`; entry_labels ("New Conversation", ...);
   composer `textarea.tawk-chatinput-editor`; not_ready_detail `no_tawk_api`; loader gate as above.
 
-## Open (HITL test store, like the Tidio test store)
+## Verified against the shipped code (no sends)
 
-Stand up a free tawk.to account + a test page so we can, without spamming a real merchant: (a) confirm a
-programmatic Enter actually transmits and onChatMessageVisitor fires, (b) prove the add_init_script email
-injection makes an operator reply email back to us (the whole reply-capture thesis, for tawk).
+The real TawkAdapter / WidgetDriver(TAWK) code (not just the probe scripts) was run against the 3 live
+stores: it resolves the iframe, installs the confirm hook, clicks the entry, and reaches a VISIBLE
+composer on both standard-widget stores (fossilageminerals, allurepack). The production-path gate also
+correctly passes the 3 live stores and fails app-embed stores with no direct loader.
+
+## Known limitation: the "help center" widget variant
+
+mohifashion.com runs a CUSTOMISED widget whose Home is a "Need help? ... start a conversation" help-center
+screen with no composer until deeper in. The shipped code resolves its frame (via the `.tawk-chat-panel`
+root) and clicks the entry, but its composer appears via a different flow, so we do not reach it. Standard
+widgets (the common case) work. This variant is a follow-up, not a blocker.
+
+## Open (one real HITL send, like Tidio's talleyandtwine - no test store)
+
+The only thing left to finalise delivery is one genuine pitch into one real standard-widget tawk store,
+run by Nikhil, to confirm (a) a programmatic Enter actually transmits and (b) onChatMessageVisitor fires so
+the callback-flag confirm reports honestly. Reply-capture (does a merchant reply ever reach us) stays the
+project-wide open question; for tawk the candidate path is add_init_script visitor-email injection, to be
+settled deliberately later - NOT via a trial test store (that approach already failed for Tidio).

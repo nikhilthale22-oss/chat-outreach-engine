@@ -9,9 +9,10 @@ See `CONTEXT.md` for the glossary, `docs/adr/` for decisions, `CHANGELOG.md` for
 
 ## Status (2026-06-27)
 
-Engine works end-to-end. Tidio is the live vendor; delivery on modern (v4/Lyro) stores is
-fixed, and the gate now filters dead/expired accounts over HTTP before spending a browser
-launch. 61 tests green.
+Engine works end-to-end. Vendors are now configs over a shared `WidgetDriver` (ADR-0007): Tidio
+(live) and **Tawk** (built this session, verified live to the composer on standard widgets). The
+gate filters dead/expired accounts over HTTP per vendor before spending a browser launch. 96 tests
+green.
 
 **The honest foundation, measured (random N=40, production path):** of the ~2,640 apparel-Tidio
 pool, ~7.6% are actually deliverable (~200 live stores) - the rest are dead accounts whose
@@ -19,10 +20,10 @@ static tag lingers. So scale is a **breadth** problem (more vendors), not a spee
 
 ## Where it's going
 
-Generalize the Tidio adapter into a shared `WidgetDriver` + per-vendor `VendorConfig` so each
-new vendor (Crisp next) is cheap and reskin-proof, then widen vendor coverage. The unsolved
-question is **reply capture** - whether a merchant's reply reliably reaches our inbox (still
-unproven; see `PENDING.md`).
+The breadth lever is built: a new DOM-drive vendor is a `VendorConfig` over `WidgetDriver`, and
+the driver now handles same-origin iframe widgets (Tawk). Next: one real HITL send to finalise
+Tawk delivery, then more vendors. The unsolved question remains **reply capture** - whether a
+merchant's reply reliably reaches us (still unproven across thousands of sends; see `PENDING.md`).
 
 ## Stack
 

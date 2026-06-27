@@ -21,6 +21,15 @@ def test_config_confirms_on_the_wire_frame():
     assert TIDIO.confirm_frame_marker == "visitorNewMessage"
 
 
+def test_tidio_path_unchanged_by_the_iframe_extension():
+    # the frame-support fields added for Tawk default to Tidio's existing shape, so Tidio still
+    # drives the page directly (no iframe) with the button-text entry resolver.
+    assert TIDIO.widget_frame_marker is None
+    assert TIDIO.entry_strategy == "button_texts"
+    assert TIDIO.composer_selector == "textarea, [contenteditable='true']"
+    assert TIDIO.confirm_setup_js is None
+
+
 def test_config_reports_no_tidio_api_when_widget_never_comes_up():
     assert TIDIO.not_ready_detail == "no_tidio_api"
 

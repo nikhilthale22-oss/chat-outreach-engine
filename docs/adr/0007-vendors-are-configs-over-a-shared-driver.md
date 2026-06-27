@@ -42,3 +42,14 @@ uniform, reskin-proof vendor coverage; a vendor that needs genuinely different c
 explicit escape hatch). Parity was held at the cut-over: every config-generated selector and JS
 snippet was diffed against the old Tidio literals, the pure-logic tests moved with the code and stay
 green, and the live send flow is the same code moved verbatim, re-proven by a real Tidio send.
+
+## Validated by Tawk (2026-06-27)
+
+Tawk.to became the second vendor and confirmed the seam pays off: it is a `VendorConfig`, not a class
+(no new flow code for the visitor send). It did require the driver to grow ONE capability the config
+declares - same-origin iframe widgets resolved by a content marker (`widget_frame_marker`), because
+Tawk's v4 panel lives in an `about:srcdoc` iframe with no stable URL. That is the intended pattern: the
+shared driver gains a capability when a vendor needs it (added test-first, behind config defaults so
+existing vendors are untouched), and the next iframe vendor reuses it for free. Also added as config
+knobs the same way: a `callback_flag` confirm (onChatMessageVisitor) and a `by_text` entry strategy.
+Tidio's path stayed byte-identical (the new fields default to its shape). See research/tawk-injection.md.

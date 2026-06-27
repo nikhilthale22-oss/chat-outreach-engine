@@ -1,6 +1,6 @@
 """WidgetDriver: the shared engine for the DOM-drive family of Chat Widgets.
 
-Most chat vendors (Tidio, Crisp, Tawk, Shopify Inbox, ...) are driven the same way: launch a
+Most chat vendors (Tidio, Tawk, Crisp, Shopify Inbox, ...) are driven the same way: launch a
 stealthed browser, load the site, wait for the widget to come up, open it, reach the composer
 (sometimes past a Home screen), type the Pitch, get past the email gate, and confirm delivery.
 What differs between vendors is *data*, not control flow: which scope selector the widget lives
@@ -8,10 +8,12 @@ under, the JS predicate that says it is ready, the labels that open a conversati
 gate works, and how a send is confirmed. WidgetDriver owns the flow; a VendorConfig supplies the
 data. Adding such a vendor is a new VendorConfig, not a new class (ADR-0007).
 
-This is the verbatim Tidio send() flow (research/tidio-injection.md, ADR-0003 wire-confirmed
-delivery) lifted behind the config seam, so a Tidio run through WidgetDriver(TIDIO) behaves
-byte-for-byte as the old hand-written TidioAdapter did. Vendors whose SEND is a JS API rather
-than a DOM drive (e.g. Gorgias) do NOT belong here; they stay hand-written classes.
+Some widgets render their UI in a same-origin iframe with no stable URL/name (Tawk's v4 widget
+uses an `about:srcdoc` iframe). For those, the config sets `widget_frame_marker` - a selector that
+only exists inside the widget frame - and the driver resolves that frame by content and scopes the
+composer/entry/email/send to it. The widget's JS API (open, ready, the confirm hook) still lives on
+the top page, so those run page-level. Vendors whose SEND is a JS API rather than a DOM drive (e.g.
+Gorgias) do NOT belong here; they stay hand-written classes.
 
 Env: HEADED=1 (visible window), TIDIO_DEBUG=1 (screenshot to /tmp/tidio_dbg_sent.png).
 """
@@ -34,14 +36,20 @@ class VendorConfig:
     email_strategy: how the email gate works -
         "prechat_then_api" - a pre-chat email field may appear; fill+send it, else attach the
                              email through email_api_js (Tidio).
-        "none"            - no email gate.
+        "none"            - no email gate (Tawk's default widget has none).
     confirm_strategy: how a send is confirmed -
-        "wire_token" - watch the websocket for a frame carrying our Pitch token (honest, no
-                       false positives; ADR-0003). Needs confirm_frame_marker.
-        "none"       - assume sent once the composer submitted.
+        "wire_token"   - watch the websocket for a frame carrying our Pitch token (Tidio; ADR-0003).
+        "callback_flag"- install a JS callback (confirm_setup_js) that records sent visitor messages
+                         to window.__cw_confirm, then check our token appears (Tawk's onChatMessageVisitor).
+        "none"         - assume sent once the composer submitted.
+    entry_strategy: how to reach the composer from a Home screen -
+        "button_texts" - read the clickable button texts and resolve via _pick_entry_label (Tidio).
+        "by_text"      - click the first visible element matching an entry label by text (Tawk).
+    widget_frame_marker: a selector that exists only inside the widget's iframe. When set, the driver
+        resolves that frame by content and scopes DOM ops to it; when None, ops run on the page.
     """
     vendor: str
-    widget_scope: str | None            # shadow host / scope selector; None = whole page
+    widget_scope: str | None            # shadow host / scope selector; None = page (or whole frame)
     ready_predicate: str                # JS expr, truthy once the widget is ready
     ready_fallback_predicate: str       # JS expr returned if readiness times out
     ready_timeout_ms: int
@@ -52,6 +60,12 @@ class VendorConfig:
     email_api_js: str | None            # JS statement (references `e`) to attach the email
     confirm_strategy: str
     confirm_frame_marker: str | None    # websocket frame marker for "wire_token"
+    # --- optional, default to the Tidio shape so existing configs are unaffected ---
+    composer_selector: str = "textarea, [contenteditable='true']"
+    entry_selector: str = "button, [role='button']"
+    entry_strategy: str = "button_texts"
+    widget_frame_marker: str | None = None
+    confirm_setup_js: str | None = None  # JS run on the page before send, for "callback_flag"
 
 
 class WidgetDriver:
@@ -122,7 +136,6 @@ class WidgetDriver:
         from playwright.sync_api import sync_playwright
 
         cfg = self.config
-        scope = cfg.widget_scope
         headed = os.environ.get("HEADED", "").lower() in ("1", "true", "yes")
         debug = bool(os.environ.get("TIDIO_DEBUG"))
         url = self._target_url(domain)
@@ -164,12 +177,22 @@ class WidgetDriver:
                 page.evaluate("() => { try { " + cfg.open_js + "; } catch(_){} }")
                 time.sleep(2.5)
                 self._dismiss_site_overlays(page)
+                if cfg.confirm_setup_js:
+                    try:
+                        page.evaluate("() => { try { " + cfg.confirm_setup_js + " } catch(_){} }")
+                    except Exception:
+                        pass
 
-                composer = self._composer(page)
+                # The widget UI may live in a same-origin iframe with no stable URL (Tawk). Resolve
+                # the surface (frame or page) we drive the composer/entry/email/send on.
+                surface = self._surface(page)
+
+                composer = self._composer(surface)
                 if composer is None:
-                    self._click_entry(page)          # Home screen: composer is behind an entry
+                    self._click_entry(surface)       # Home screen: composer is behind an entry
                     time.sleep(2)
-                    composer = self._composer(page)
+                    surface = self._surface(page)     # the view may have re-rendered the frame
+                    composer = self._composer(surface)
                 if composer is None:
                     return SendResult(False, "no_composer")
 
@@ -184,7 +207,7 @@ class WidgetDriver:
                 composer.press("Enter")
                 time.sleep(2)
 
-                prechat_blocked = self._handle_email_gate(page, frames, token, reply_email)
+                prechat_blocked = self._handle_email_gate(surface, page, frames, token, reply_email)
 
                 if debug:
                     try:
@@ -199,7 +222,7 @@ class WidgetDriver:
                 # callback flushes (a bare time.sleep does NOT pump the sync driver).
                 deadline = time.time() + 6
                 while time.time() < deadline:
-                    if self._delivered(frames, token, cfg.confirm_frame_marker):
+                    if self._confirmed(page, frames, token):
                         return SendResult(True, "delivered")
                     page.wait_for_timeout(250)
                 if prechat_blocked:
@@ -208,7 +231,7 @@ class WidgetDriver:
             except Exception as e:
                 # Deliver-then-raise: if the Pitch already hit the wire, report it honestly so the
                 # Ledger advances and we never re-pitch (double-send) the same store next run.
-                if self._delivered(frames, token, cfg.confirm_frame_marker):
+                if self._confirmed(page, frames, token):
                     return SendResult(True, "delivered_then_error")
                 return SendResult(False, f"{type(e).__name__}: {str(e)[:160]}")
             finally:
@@ -218,36 +241,75 @@ class WidgetDriver:
                     except Exception:
                         pass
 
-    def _handle_email_gate(self, page, frames, token, reply_email) -> bool:
+    # ----- surface + confirm ------------------------------------------------------------
+
+    def _surface(self, page):
+        """The Page or Frame the composer lives on. When widget_frame_marker is set, find the frame
+        that contains it (the widget's same-origin iframe, which has no stable URL/name) and return
+        it; otherwise the page. Waits briefly because the frame appears after the widget opens."""
+        marker = self.config.widget_frame_marker
+        if not marker:
+            return page
+        for _ in range(24):  # heavy stores render the widget iframe slowly; wait up to ~12s
+            try:
+                for fr in page.frames:
+                    try:
+                        if fr.locator(marker).count() > 0:
+                            return fr
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            try:
+                page.wait_for_timeout(500)
+            except Exception:
+                break
+        return page  # frame never appeared -> composer lookup fails -> no_composer (retryable)
+
+    def _confirmed(self, page, frames, token):
+        """Was the Pitch really sent? wire_token: a marker websocket frame carries the token.
+        callback_flag: the vendor's visitor-message callback recorded our token to window.__cw_confirm."""
+        cs = self.config.confirm_strategy
+        if cs == "wire_token":
+            return self._delivered(frames, token, self.config.confirm_frame_marker)
+        if cs == "callback_flag":
+            try:
+                blob = page.evaluate("() => (window.__cw_confirm || []).join('\\n')")
+            except Exception:
+                return False
+            return bool(blob) if not token else (token in blob)
+        return False
+
+    def _handle_email_gate(self, surface, page, frames, token, reply_email) -> bool:
         """Get past the email gate. Returns True if a required pre-chat field still blocks Send.
 
-        "prechat_then_api": if a pre-chat email field is visible, fill it (and any required name)
-        and click Send, nudging a resend if the wire frame has not flushed; otherwise attach the
-        email through the vendor API so the operator can still reply.
+        "none": no gate. "prechat_then_api": if a pre-chat email field is visible, fill it (and any
+        required name) and click Send, nudging a resend if the wire frame has not flushed; otherwise
+        attach the email through the vendor API so the operator can still reply.
         """
         cfg = self.config
         if cfg.email_strategy == "none":
             return False
 
         scope = cfg.widget_scope
-        email = page.locator(
+        email = surface.locator(
             self._scoped(scope, "input[type='email'], input[placeholder*='email' i]")
         ).first
         if email.count() and email.is_visible(timeout=2000):
-            self._fill_name(page)
+            self._fill_name(surface)
             email.fill(reply_email, timeout=8000, force=True)
-            send_btn = self._send_button(page)
+            send_btn = self._send_button(surface)
             if send_btn is not None:
                 try:
                     send_btn.click(timeout=4000, force=True)
                 except Exception:
                     pass
             time.sleep(3)
-            if not self._delivered(frames, token, cfg.confirm_frame_marker):
+            if not self._confirmed(page, frames, token):
                 # Resend nudge: read text generically (a contenteditable has no input_value())
                 # and NEVER let a recovery error abort the send.
                 try:
-                    c2 = self._composer(page)
+                    c2 = self._composer(surface)
                     if c2 is not None:
                         txt = c2.evaluate(
                             "el => (el.value != null ? el.value : (el.textContent || ''))")
@@ -258,9 +320,9 @@ class WidgetDriver:
                     pass
             # If a required field (phone/consent) still blocks Send, flag it distinctly so the
             # batch runner routes this store out of the retry loop.
-            if not self._delivered(frames, token, cfg.confirm_frame_marker):
+            if not self._confirmed(page, frames, token):
                 try:
-                    sb = self._send_button(page)
+                    sb = self._send_button(surface)
                     if sb is not None and sb.is_disabled(timeout=500):
                         return True
                 except Exception:
@@ -271,34 +333,50 @@ class WidgetDriver:
         # operator can reply. Guard the evaluate: the context may detach post-send.
         if cfg.email_api_js:
             try:
-                page.evaluate(
+                surface.evaluate(
                     "(e) => { try { " + cfg.email_api_js + "; } catch(_){} }", reply_email)
             except Exception:
                 pass
         return False
 
-    # ----- scoped DOM helpers ------------------------------------------------------------
+    # ----- scoped DOM helpers (operate on the surface: page or widget frame) --------------
 
-    def _composer(self, page):
-        loc = page.locator(
-            self._scoped(self.config.widget_scope, "textarea, [contenteditable='true']")).first
+    def _composer(self, surface):
+        """The first VISIBLE composer on the surface. (Tawk renders two matching textareas, one
+        hidden behind the Home card; Tidio has one - in both cases we want the visible one.)"""
+        loc = surface.locator(self._scoped(self.config.widget_scope, self.config.composer_selector))
         try:
-            if loc.count() and loc.is_visible(timeout=1500):
-                return loc
+            for i in range(min(loc.count(), 6)):
+                el = loc.nth(i)
+                if el.is_visible(timeout=1200):
+                    return el
         except Exception:
             pass
         return None
 
-    def _click_entry(self, page):
-        """Reach the composer from a Home/menu screen by clicking an entry. Reads the widget's
-        visible clickable texts, resolves which to click via _pick_entry_label, then clicks that
-        exact element by index. A miss returns False (-> no_composer), never raises."""
-        loc = page.locator(self._scoped(self.config.widget_scope, "button, [role='button']"))
+    def _click_entry(self, surface):
+        """Reach the composer from a Home/menu screen by clicking an entry. Never raises.
+        "button_texts" (Tidio): read the clickable button texts, resolve via _pick_entry_label,
+        click that exact element. "by_text" (Tawk): click the first visible element matching an
+        entry label by its text (the 'New Conversation' card is not a <button>)."""
+        cfg = self.config
+        if cfg.entry_strategy == "by_text":
+            for label in cfg.entry_labels:
+                try:
+                    loc = surface.get_by_text(label, exact=False).first
+                    if loc.count() and loc.is_visible(timeout=1000):
+                        loc.click(timeout=2500)
+                        return True
+                except Exception:
+                    continue
+            return False
+
+        loc = surface.locator(self._scoped(cfg.widget_scope, cfg.entry_selector))
         try:
             texts = loc.all_inner_texts()
         except Exception:
             return False
-        picked = self._pick_entry_label(self.config.entry_labels, texts)
+        picked = self._pick_entry_label(cfg.entry_labels, texts)
         if picked is None:
             return False
         try:
@@ -310,9 +388,9 @@ class WidgetDriver:
             pass
         return False
 
-    def _fill_name(self, page):
+    def _fill_name(self, surface):
         """Fill a pre-chat name field if the survey requires one (no-op on email-only forms)."""
-        name = page.locator(
+        name = surface.locator(
             self._scoped(self.config.widget_scope,
                          "input[name*='name' i], input[placeholder*='name' i]")).first
         try:
@@ -321,15 +399,15 @@ class WidgetDriver:
         except Exception:
             pass
 
-    def _send_button(self, page):
+    def _send_button(self, surface):
         """The widget Send control. Ordered: the proven visible-text 'Send' first, then icon/aria
         variants. First visible match wins; never matches outside the widget scope."""
         scope = self.config.widget_scope
         prefix = (scope + " ") if scope else ""
         candidates = (
-            page.locator(f"{prefix}button", has_text=re.compile("send", re.I)),
-            page.locator(f"{prefix}button[aria-label*='send' i]"),
-            page.locator(f"{prefix}[role='button'][aria-label*='send' i]"),
+            surface.locator(f"{prefix}button", has_text=re.compile("send", re.I)),
+            surface.locator(f"{prefix}button[aria-label*='send' i]"),
+            surface.locator(f"{prefix}[role='button'][aria-label*='send' i]"),
         )
         for loc in candidates:
             try:

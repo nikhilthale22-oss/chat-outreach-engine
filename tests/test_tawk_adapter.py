@@ -1,0 +1,50 @@
+"""Tawk is a VendorConfig (TAWK) over the shared WidgetDriver (ADR-0007), the second DOM-drive
+vendor and the first that lives in an iframe. These tests lock the Tawk-specific data the live
+spike established (research/tawk-injection.md) - the frame marker, the maximize/ready/entry/composer
+mechanics, the callback-flag confirm, and the no-email-gate default - and confirm the adapter
+delegates under the same public surface. The live send() is proven by a real run.
+"""
+from chat_outreach_engine.adapters.tawk import TAWK, TawkAdapter
+from chat_outreach_engine.widget_driver import VendorConfig, WidgetDriver
+
+
+def test_adapter_delegates_under_the_tawk_vendor():
+    # the vendor string must match the signature ("tawk.to") so the registry dispatches to it
+    assert TawkAdapter.vendor == "tawk.to"
+    assert TAWK.vendor == "tawk.to"
+
+
+def test_is_dom_drive_config_not_a_class():
+    assert isinstance(TAWK, VendorConfig)
+    assert WidgetDriver(TAWK).config is TAWK
+
+
+def test_config_resolves_the_widget_by_iframe_content_marker():
+    # tawk renders in a same-origin iframe with no stable URL; resolve it by the panel root (present
+    # on the Home screen of every widget variant, unlike the composer which some variants defer)
+    assert TAWK.widget_frame_marker == ".tawk-chat-panel"
+    assert TAWK.widget_scope is None          # the frame IS the scope
+
+
+def test_config_opens_with_maximize_and_waits_on_tawk_api():
+    assert TAWK.open_js == "window.Tawk_API.maximize()"
+    assert "Tawk_API" in TAWK.ready_predicate
+    assert TAWK.not_ready_detail == "no_tawk_api"
+
+
+def test_config_drives_the_tawk_composer_by_text_entry():
+    assert TAWK.composer_selector == "textarea.tawk-chatinput-editor"
+    assert TAWK.entry_strategy == "by_text"
+    assert "New Conversation" in TAWK.entry_labels
+
+
+def test_config_confirms_via_the_visitor_message_callback():
+    assert TAWK.confirm_strategy == "callback_flag"
+    assert "onChatMessageVisitor" in TAWK.confirm_setup_js
+    assert "__cw_confirm" in TAWK.confirm_setup_js
+
+
+def test_config_has_no_email_gate_by_default():
+    # the default tawk widget has no pre-chat email form; the composer is immediate
+    assert TAWK.email_strategy == "none"
+    assert TAWK.email_api_js is None

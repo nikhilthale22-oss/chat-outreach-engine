@@ -84,13 +84,16 @@ class BatchReport:
 
 def live_gate(vendor: str | None, html: str) -> bool:
     """Confirm, against the live HTML, that this vendor's widget will actually load under
-    automation. Tidio: require a DIRECT code.tidio.co/<id>.js loader tag (dynamic app-embed
-    stores only reference tidioChatApi and never initialise headless). Other automatable
-    vendors: the static signature already implies a loadable widget."""
+    automation. Tidio: require a DIRECT code.tidio.co/<id>.js loader tag; Tawk: a direct
+    embed.tawk.to/<pid>/<wid> loader tag (dynamic app-embed / deferred-injection stores only
+    reference the runtime global and never initialise headless). Other automatable vendors: the
+    static signature already implies a loadable widget."""
     if not html:
         return False
     if vendor == "tidio":
         return bool(re.search(r"code\.tidio\.co/[a-z0-9]+\.js", html, re.I))
+    if vendor == "tawk.to":
+        return bool(re.search(r"embed\.tawk\.to/[0-9a-fA-F]{16,}/[0-9A-Za-z]+", html, re.I))
     return True
 
 
@@ -110,6 +113,25 @@ def _tidio_loader_url(html: str) -> str | None:
         return None
     m = re.search(r"code\.tidio\.co/[a-z0-9]+\.js", html, re.I)
     return ("https://" + m.group(0)) if m else None
+
+
+def _tawk_loader_url(html: str) -> str | None:
+    """The full https URL of Tawk's widget loader (embed.tawk.to/<propertyId>/<widgetId>), or None.
+    The static tag lingers after a Tawk account expires (the loader then 403/404s), same as Tidio."""
+    if not html:
+        return None
+    m = re.search(r"embed\.tawk\.to/[0-9a-fA-F]{16,}/[0-9A-Za-z]+", html, re.I)
+    return ("https://" + m.group(0)) if m else None
+
+
+def _loader_url(vendor: str | None, html: str) -> str | None:
+    """The widget-loader URL whose liveness we re-verify for this vendor, or None for vendors that
+    have no dead-account-lingering-tag problem (so no loader GET is spent on them)."""
+    if vendor == "tidio":
+        return _tidio_loader_url(html)
+    if vendor == "tawk.to":
+        return _tawk_loader_url(html)
+    return None
 
 
 def loader_liveness(url: str | None, fetch=None) -> str:
@@ -161,10 +183,11 @@ class LiveAssessor:
         has_ai = any(h.get("category") == AI_CATEGORY for h in hits)
         if not live_gate(vendor, html):
             return Assessment(domain, True, True, vendor, has_ai, False)
-        if vendor == "tidio":
-            state = loader_liveness(_tidio_loader_url(html), fetch=self._loader_fetch)
+        loader = _loader_url(vendor, html)
+        if loader is not None:
+            state = loader_liveness(loader, fetch=self._loader_fetch)
             if state == LOADER_DEAD:
-                return Assessment(domain, True, True, vendor, has_ai, False, "tidio loader dead")
+                return Assessment(domain, True, True, vendor, has_ai, False, f"{vendor} loader dead")
             if state == LOADER_UNKNOWN:
                 return Assessment(domain, True, True, vendor, has_ai, False, "loader unknown")
         return Assessment(domain, True, True, vendor, has_ai, True)
