@@ -10,11 +10,14 @@ from chat_outreach_engine.batch import (
     LiveAssessor,
     _tawk_loader_url,
     _tidio_loader_url,
+    _zendesk_loader_url,
     loader_liveness,
 )
 
 TAG = '<script src="//code.tidio.co/abc123.js" async></script>'
 TAWK_TAG = '<script src="https://embed.tawk.to/5a4e68f94b401e45400bdeaa/default"></script>'
+ZENDESK_TAG = ('<script id="ze-snippet" src="https://static.zdassets.com/ekr/snippet.js'
+               '?key=102a0471-0dc0-43e0-8aee-8014b5ce904c"></script>')
 
 
 def test_loader_url_from_protocol_relative_tag():
@@ -100,4 +103,37 @@ def test_assessor_live_tawk_loader_passes_gate():
 
 def test_assessor_unknown_tawk_loader_is_retryable():
     a = _tawk_assessor(502)("store.com")
+    assert a.gate_passed is False and a.gate_reason == "loader unknown"
+
+
+# The same dead-account-lingering-tag gate applies to Zendesk (static.zdassets.com/ekr/snippet.js
+# ?key=<uuid>), which ALSO filters stores that dropped Zendesk but kept the static tag (the signature
+# over-counts: only ~20% of grep-matched stores still initialise zE).
+
+def test_zendesk_loader_url_from_snippet_tag():
+    assert (_zendesk_loader_url(ZENDESK_TAG)
+            == "https://static.zdassets.com/ekr/snippet.js?key=102a0471-0dc0-43e0-8aee-8014b5ce904c")
+
+
+def test_zendesk_loader_url_absent_returns_none():
+    assert _zendesk_loader_url("<html>no zendesk here</html>") is None
+    assert _zendesk_loader_url("") is None
+
+
+def _zendesk_assessor(loader_status):
+    return LiveAssessor(fetch=lambda d: ZENDESK_TAG, loader_fetch=lambda u: loader_status)
+
+
+def test_assessor_dead_zendesk_loader_fails_gate_with_distinct_reason():
+    a = _zendesk_assessor(404)("store.com")
+    assert a.vendor == "zendesk" and a.gate_passed is False and a.gate_reason == "zendesk loader dead"
+
+
+def test_assessor_live_zendesk_loader_passes_gate():
+    a = _zendesk_assessor(200)("store.com")
+    assert a.vendor == "zendesk" and a.gate_passed is True
+
+
+def test_assessor_unknown_zendesk_loader_is_retryable():
+    a = _zendesk_assessor(502)("store.com")
     assert a.gate_passed is False and a.gate_reason == "loader unknown"

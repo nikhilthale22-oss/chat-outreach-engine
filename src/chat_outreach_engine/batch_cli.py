@@ -23,6 +23,7 @@ from .adapters import (
     LiveChatAdapter,
     TawkAdapter,
     TidioAdapter,
+    ZendeskAdapter,
 )
 from .batch import BatchRunner
 from .ledger import Ledger
@@ -68,7 +69,7 @@ def main(argv=None) -> None:
     ledger = Ledger(args.db)
     available = {"gorgias": GorgiasAdapter(), "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
                  "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(), "intercom": IntercomAdapter(),
-                 "helpscout": HelpScoutAdapter()}
+                 "helpscout": HelpScoutAdapter(), "zendesk": ZendeskAdapter()}
     enabled = {v.strip() for v in args.vendors.split(",") if v.strip()}
     adapters = {k: a for k, a in available.items() if k in enabled}
     runner = BatchRunner(ledger, adapters, args.email, concurrency=args.concurrency,

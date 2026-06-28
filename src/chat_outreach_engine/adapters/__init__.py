@@ -6,6 +6,8 @@ from .livechat import LiveChatAdapter
 from .shopify_inbox import ShopifyInboxAdapter
 from .tawk import TawkAdapter
 from .tidio import TidioAdapter
+from .zendesk import ZendeskAdapter
 
 __all__ = ["ChatraAdapter", "GorgiasAdapter", "HelpScoutAdapter", "IntercomAdapter",
-           "LiveChatAdapter", "ShopifyInboxAdapter", "TawkAdapter", "TidioAdapter"]
+           "LiveChatAdapter", "ShopifyInboxAdapter", "TawkAdapter", "TidioAdapter",
+           "ZendeskAdapter"]

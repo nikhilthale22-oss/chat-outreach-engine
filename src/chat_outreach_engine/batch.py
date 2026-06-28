@@ -94,6 +94,8 @@ def live_gate(vendor: str | None, html: str) -> bool:
         return bool(re.search(r"code\.tidio\.co/[a-z0-9]+\.js", html, re.I))
     if vendor == "tawk.to":
         return bool(re.search(r"embed\.tawk\.to/[0-9a-fA-F]{16,}/[0-9A-Za-z]+", html, re.I))
+    if vendor == "zendesk":
+        return bool(re.search(r"static\.zdassets\.com/ekr/snippet\.js\?key=", html, re.I))
     return True
 
 
@@ -124,6 +126,17 @@ def _tawk_loader_url(html: str) -> str | None:
     return ("https://" + m.group(0)) if m else None
 
 
+def _zendesk_loader_url(html: str) -> str | None:
+    """The full https URL of Zendesk's widget loader (static.zdassets.com/ekr/snippet.js?key=<uuid>),
+    or None. The snippet tag lingers in a store's HTML after its Zendesk account lapses (the loader
+    then 40x's) and the static signature also matches stores that have since dropped Zendesk, so the
+    loader GET filters both - only a 200 means the widget will actually initialise (no_zendesk_api)."""
+    if not html:
+        return None
+    m = re.search(r"static\.zdassets\.com/ekr/snippet\.js\?key=[0-9a-fA-F-]{8,}", html, re.I)
+    return ("https://" + m.group(0)) if m else None
+
+
 def _loader_url(vendor: str | None, html: str) -> str | None:
     """The widget-loader URL whose liveness we re-verify for this vendor, or None for vendors that
     have no dead-account-lingering-tag problem (so no loader GET is spent on them)."""
@@ -131,6 +144,8 @@ def _loader_url(vendor: str | None, html: str) -> str | None:
         return _tidio_loader_url(html)
     if vendor == "tawk.to":
         return _tawk_loader_url(html)
+    if vendor == "zendesk":
+        return _zendesk_loader_url(html)
     return None
 
 

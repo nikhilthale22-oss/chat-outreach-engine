@@ -133,7 +133,9 @@ class WidgetDriver:
 
     # ----- the live send (integration; proven by real runs) ------------------------------
 
-    def send(self, domain: str, pitch: str, reply_email: str) -> SendResult:
+    def send(self, domain: str, pitch: str, reply_email: str, dry_run: bool = False) -> SendResult:
+        """Pitch one Brand. dry_run reaches the composer and returns "composer_reached" WITHOUT
+        typing or sending - the verify-to-composer path, safe to run unattended (nothing transmits)."""
         from playwright.sync_api import sync_playwright
 
         cfg = self.config
@@ -198,6 +200,8 @@ class WidgetDriver:
                     composer = self._composer(surface)
                 if composer is None:
                     return SendResult(False, "no_composer")
+                if dry_run:
+                    return SendResult(True, "composer_reached")
 
                 # Type the Pitch, sending newlines as Shift+Enter (soft line breaks) so an
                 # embedded \n does not submit early and spill the rest into the next field.

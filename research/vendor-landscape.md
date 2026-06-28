@@ -10,7 +10,7 @@ scale (Zendesk 654, Re:amaze 131, Intercom 98, HelpScout 49).
 | vendor | stores | send mechanism | build path | status |
 |---|---|---|---|---|
 | Gorgias | 484 | API (`GorgiasChat.sendMessage`) | hand-written class | done (not delivery-confirmed) |
-| **Zendesk** | **174** | **API** (`zE('messenger','sendMessage')`) / Classic is DOM-only | api-send or DOM (probe-dependent) | inconsistent load; see notes |
+| **Zendesk** | **174** | **DOM-drive** (messaging composer; the async sendMessage API is not needed) | WidgetDriver config (frame by "Messaging window" marker) | **built + verified to composer 5/5** (research/zendesk-injection.md) |
 | Tidio | 59 | DOM-drive | WidgetDriver config | done + real-send proven |
 | **Re:amaze** | **44** | DOM-drive (`Reamaze.popup()`); requires name+email (reply path!) | WidgetDriver config | deferred: popup opens a help-center lightbox, not a chat composer |
 | Intercom | 32 | API (`Intercom('startConversation', msg)`; showNewMessage only prefills) | ApiVendorConfig over ApiSendDriver | BUILT, NOT send-verified |
@@ -22,12 +22,12 @@ scale (Zendesk 654, Re:amaze 131, Intercom 98, HelpScout 49).
 
 ## The strategic split
 
-- **DOM-drive family (WidgetDriver configs):** Tidio, Tawk, Re:amaze, LiveChat, Chatra, HelpScout. The
-  proven, cheap path - a config + (when the widget is in an iframe) a frame resolver. dom_echo confirms.
-- **API-send family (hand-written, Gorgias-style):** Gorgias, Zendesk, Intercom, Crisp. These transmit
-  via a JS call - no DOM typing. Zendesk (174) + Intercom (32) are the two biggest unbuilt vendors, so the
-  api-send path is the single largest remaining reach, but it is a different mechanism (build a small
-  ApiSendAdapter that does open -> newConversation/sendMessage -> confirm via the API callback).
+- **DOM-drive family (WidgetDriver configs):** Tidio, Tawk, **Zendesk**, Re:amaze, LiveChat, Chatra,
+  HelpScout. The proven, cheap path - a config + (when the widget is in an iframe) a frame resolver.
+  dom_echo confirms. Zendesk (the biggest) moved here after probing: its messaging widget renders a real
+  composer, so no api-send is needed (research/zendesk-injection.md).
+- **API-send family (hand-written / ApiSendDriver):** Gorgias, Intercom, Crisp. These transmit via a JS
+  call - no DOM typing. Intercom (32) is now the main api-send vendor (built, not send-verified).
 
 ## Notes from the live probes
 
@@ -42,9 +42,10 @@ scale (Zendesk 654, Re:amaze 131, Intercom 98, HelpScout 49).
   reply-capture thesis - we get to leave our email. DEFERRED: `Reamaze.popup()` opened a help-center
   contact lightbox, not the live-chat shoutbox composer, and the SDK global loaded inconsistently. Needs
   a focused look at enabling/targeting the shoutbox widget.
-- **Zendesk DEFERRED despite being the biggest (654).** Probing showed it is unreliable headless: ~half
-  the stores never initialise `zE` (the snippet is inert, like a dead Tidio account), and of those that
-  do, the DOM composer surfaced only intermittently (present on sunwarrior.com on one run, absent on the
-  next). Its modern messaging send is also an async multi-step API (newConversation -> sendMessage), not
-  a one-call send. Zendesk needs a dedicated session (decide DOM-drive on the stores that render a
-  composer vs the messaging api-send flow) rather than a flaky overnight config.
+- **Zendesk BUILT (2026-06-28) - the deferral was wrong.** A focused session overturned it: the
+  "intermittent composer" was a slow-bundle race + a frame-filter bug, not real flakiness. The modern
+  messaging widget renders a real composer in a srcdoc/blank iframe titled "Messaging window"; resolved
+  by content marker + generous poll, it surfaces 5/5. DOM-drive, not api-send. The "~half never init zE"
+  is the dead-account-lingering-tag problem (loader-liveness GET of `static.zdassets.com/ekr/snippet.js`
+  filters it, like Tidio/Tawk). Raw counts over-count ~5x: only ~20-23% of grep-matched stores run live
+  Zendesk. Real online HITL send still owed. Full trail: research/zendesk-injection.md.

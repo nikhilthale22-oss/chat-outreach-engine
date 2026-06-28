@@ -7,15 +7,17 @@ support, **never by switching to cold email** (ADR-0001).
 See `CONTEXT.md` for the glossary, `docs/adr/` for decisions, `CHANGELOG.md` for what changed,
 `PENDING.md` for what's open.
 
-## Status (2026-06-27)
+## Status (2026-06-28)
 
 Engine works end-to-end. Vendors are configs over a shared `WidgetDriver` (ADR-0007). DOM-drive: Tidio
-and **Tawk** (real-send proven), plus **LiveChat**, **Chatra**, **HelpScout** (built + verified to the
-composer; real send owed). API-send (via `ApiSendDriver`): Gorgias, plus **Intercom** (wired, not yet
-send-verified). The driver resolves iframe widgets by URL (livechatinc.com / chatra.io) or content marker
-(Tawk's about:srcdoc, HelpScout's #beacon-container). 107 tests green. Deferred for a focused session:
-Zendesk (654 stores, inconsistent headless) and Re:amaze (131, best reply-path) - see
-`research/vendor-landscape.md`.
+and **Tawk** (real-send proven), plus **Zendesk** (the biggest vendor - verified to composer 5/5),
+**LiveChat**, **Chatra**, **HelpScout** (built + verified to the composer; real send owed). API-send
+(via `ApiSendDriver`): Gorgias, plus **Intercom** (wired, not yet send-verified). The driver resolves
+iframe widgets by URL (livechatinc.com / chatra.io) or content marker (Tawk's about:srcdoc, Zendesk's
+"Messaging window", HelpScout's #beacon-container). 120 tests green. Deferred: Re:amaze (131, best
+reply-path - `popup()` opens a help-center lightbox) - see `research/vendor-landscape.md`. **Zendesk's
+deferral was overturned this session** (the "flaky headless" was a slow-bundle race, not real;
+research/zendesk-injection.md).
 
 **The honest foundation, measured (random N=40, production path):** of the ~2,640 apparel-Tidio
 pool, ~7.6% are actually deliverable (~200 live stores) - the rest are dead accounts whose

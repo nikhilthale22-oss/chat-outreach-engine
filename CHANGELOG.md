@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-06-28
+
+- **Zendesk added (the biggest unbuilt vendor) - the earlier deferral was wrong.** Live-probed a random 40-sample on Server #1: the "intermittent composer / unreliable headless" deferral was a slow-bundle race + a frame-filter bug, not real flakiness. The modern *messaging* widget (which dominates - Zendesk deprecated Classic) renders a real composer in a srcdoc/blank iframe titled "Messaging window"; resolved by content marker + a generous poll it surfaces reliably. So Zendesk is **DOM-drive, not api-send** - a `VendorConfig` (`ZENDESK`) over WidgetDriver with **zero new driver code** (reuses Tawk's `widget_frame_marker` + `dom_echo`). `open_js` fires every `zE` open verb, each guarded, so one config covers both widget families. (`adapters/zendesk.py`, `tests/test_zendesk_adapter.py`, `research/zendesk-injection.md`)
+- **`dry_run` on `WidgetDriver.send()`.** Reaches the composer and returns `composer_reached` WITHOUT typing or sending - transmits nothing, so it is the unattended-safe verify-to-composer proof for every vendor. (`widget_driver.py`)
+- **Verify-to-composer 5/5** on real online messaging stores (ashandemberoutdoors, dslrpros, slumberpod, blackradiancebeauty, anzzi) via the SHIPPED `WidgetDriver(ZENDESK).send(..., dry_run=True)`. Real online HITL send still owed (one store, Nikhil runs).
+- **Zendesk loader-liveness gate.** GET `static.zdassets.com/ekr/snippet.js?key=<uuid>`: 200 -> pass; 40x -> `zendesk loader dead`. Filters the dead-account-lingering-tag stores AND stores that dropped Zendesk but kept the static tag - only ~20-23% of grep-matched stores actually run live Zendesk, so the raw counts over-count ~5x. (`batch.py`, `tests/test_gate_liveness.py`)
+- Registered `ZendeskAdapter` in the dispatch (`cli.py`, `batch_cli.py`, `adapters/__init__.py`). ADR-0007 extended with the Zendesk validation. 120 tests green.
+
 ## 2026-06-27
 
 - **Slice 1: v4/Lyro composer fix.** Fresh Tidio accounts now ship the v4 "Lyro" widget that opens to a Home screen ("Chat with Lyro" / "Chat" entry), not a direct composer; the old `ENTRY_LABELS` missed it and `send()` returned `no_composer`. Added `TidioAdapter._pick_entry_label(button_texts)` pure resolver (v3 labels first, then "Chat with Lyro", then exact "Chat" nav) and rewired `_click_entry`. Live-confirmed delivered through the real adapter. (`adapters/tidio.py`, `tests/test_tidio_adapter.py`)

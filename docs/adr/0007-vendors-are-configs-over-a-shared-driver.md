@@ -53,3 +53,17 @@ shared driver gains a capability when a vendor needs it (added test-first, behin
 existing vendors are untouched), and the next iframe vendor reuses it for free. Also added as config
 knobs the same way: a `callback_flag` confirm (onChatMessageVisitor) and a `by_text` entry strategy.
 Tidio's path stayed byte-identical (the new fields default to its shape). See research/tawk-injection.md.
+
+## Validated again by Zendesk (2026-06-28)
+
+Zendesk - the biggest unbuilt vendor - had been DEFERRED as probably api-send (its modern messaging
+"send" is an async `newConversation -> sendMessage`) and "too flaky headless". Live probing overturned
+both: the modern messaging widget renders a real composer in a srcdoc/blank iframe (titled "Messaging
+window", no URL), so it is DOM-drive exactly like Tawk, and the "flakiness" was a slow-bundle race plus
+a probe bug, not real. It became a `VendorConfig` (`ZENDESK`) that needed **zero new driver code** - it
+reuses Tawk's `widget_frame_marker` (frame-by-content) and `dom_echo` confirm, with `open_js` firing
+every `zE` open verb (each guarded) so one config covers both widget families. This is the payoff the
+seam was for: the second iframe vendor (Tawk) cost one driver capability; the third (Zendesk) cost
+nothing. Verified 5/5 to composer via the shipped path. The one driver addition this round - a `dry_run`
+flag on `send()` that reaches the composer and returns without transmitting - is the unattended-safe
+verify-to-composer proof and applies to every vendor, not just Zendesk. See research/zendesk-injection.md.

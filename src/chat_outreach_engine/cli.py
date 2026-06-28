@@ -18,6 +18,7 @@ from .adapters import (
     ShopifyInboxAdapter,
     TawkAdapter,
     TidioAdapter,
+    ZendeskAdapter,
 )
 from .detect import SignatureDetector
 from .injector import Injector
@@ -43,7 +44,8 @@ def main(argv=None) -> None:
                         {"gorgias": GorgiasAdapter(), "shopify-inbox": ShopifyInboxAdapter(),
                          "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
                          "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(),
-                         "intercom": IntercomAdapter(), "helpscout": HelpScoutAdapter()})
+                         "intercom": IntercomAdapter(), "helpscout": HelpScoutAdapter(),
+                         "zendesk": ZendeskAdapter()})
     out = injector.process(
         domain, args.pitch, args.email, pitch_variant=args.variant, dry_run=not args.send
     )
