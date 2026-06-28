@@ -48,6 +48,13 @@ entry labels, email strategy, and how a send is confirmed. Adding such a vendor 
 Vendor Config, not new code.
 _Avoid_: settings, options, profile
 
+**Api Send Driver**:
+The shared engine for the API-send family of Chat Widgets: vendors that transmit a Pitch
+through a JavaScript call rather than by typing into a composer (Gorgias, Intercom, Zendesk
+messaging). It opens the widget, fires the vendor's send call, and confirms the message
+rendered. The API-send counterpart to the Widget Driver (ADR-0007).
+_Avoid_: adapter, api, sender
+
 **Reply Watcher**:
 The part that notices and records when a Brand replies to a Pitch. Every vendor delivers
 replies to the email we leave at the gate, so the Reply Watcher watches one email inbox,
