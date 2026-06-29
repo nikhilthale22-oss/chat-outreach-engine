@@ -21,7 +21,11 @@
 > token-in-thread, `captcha_challenge` if passive ever flags us, `form_blocked` otherwise). OPEN: the
 > static SignatureDetector misses Shopify Inbox (JS-injected), so the engine needs a browser-layer
 > detect pass (or a known-SI-list run) to route stores here - the adapter self-detects via
-> `no_shopify_inbox`. Also unproven at scale: the invisible-hCaptcha pass-RATE (N≈2) and reply-capture.
+> `no_shopify_inbox`. **MEASURED AT SCALE 2026-06-29: a 75-store real-pitch batch (one datacenter IP) ->
+> 24 confirmed delivered, 0 captcha_challenge** - the velocity-blocks-via-captcha risk is disproven. Losses
+> are adapter robustness, not captcha: submitted_unconfirmed 12 (confirm too strict), form_blocked 10
+> (form-fill varies), no_launcher/no_send_button/no_composer 12 (widget variants), no_shopify_inbox 16
+> (stale tags). Reply-capture: 24 real pitches now sit in merchant inboxes with our email - test running.
 > LESSON: a captcha being present is not a captcha being enforced - test the actual submission.
 
 ## (historical) findings 2026-06-22

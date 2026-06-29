@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-06-29 (later) - Shopify Inbox measured at scale
+
+- **75-store real-pitch batch via `--force-vendor shopify-inbox` (one datacenter IP): 24 confirmed delivered, 0 captcha_challenge.** The "passive hCaptcha will challenge at velocity" risk is disproven - captcha is NOT the bottleneck - and the `ForcedVendorAssessor` routing is proven end-to-end. Breakdown of the rest: submitted_unconfirmed 12 (confirm too strict; some likely delivered, held terminal to avoid double-send), form_blocked 10 (form-fill varies by store/locale), no_launcher/no_send_button/no_composer 12 (widget variants), no_shopify_inbox 16 (stale tags). So delivery is ~32% of raw candidates / ~41% of live SI; the remaining lift is adapter robustness (confirm + form-fill + launcher/send variants), not captcha. The 24 pitches are live in merchant inboxes with our reply email = the reply-capture test is finally running.
+
 ## 2026-06-29
 
 - **Shopify Inbox UNLOCKED + adapter rebuilt - the count leader (~49k) is back on the table.** The long-standing "CAPTCHA-walled, parked" verdict was wrong: it concluded from the captcha being present, never from a tested delivery failure. A HITL test showed the contact-form hCaptcha is **invisible/passive** - filling First/Last/Email + Start chat posted the message with NO challenge, from a headless browser on a datacenter IP. Real delivered sends: pickityplace.com (raw) and brandingirons.com (via the shipped adapter, screenshot-confirmed). (`research/shopify-inbox-injection.md`)
