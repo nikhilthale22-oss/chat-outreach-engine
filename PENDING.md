@@ -1,32 +1,57 @@
 # Pending
 
-## Next up (scale by breadth)
+## Model (2026-06-29): ONE-WAY delivery
 
-- **Slice 2 parity run (HITL).** WidgetDriver + VendorConfig is built and parity-checked offline (config-generated selectors/JS diffed byte-for-byte against the old Tidio literals; 82 tests green). Still owed: one live Tidio send through `WidgetDriver(TIDIO)` on talleyandtwine to confirm the lifted browser flow behaves identically. Nikhil runs the real send.
-- **Slice 3: pluggable delivery confirmation** (wire_token default + request-body watch + dom_echo + none). `confirm_strategy` already exists on VendorConfig with `wire_token`/`none`; add the other confirmers.
-- **Slice 4: Tawk as the second DOM-drive vendor - BUILT + DELIVERY PROVEN.** (Crisp was dropped: API-send like Gorgias and only ~145 stores, so it would not exercise WidgetDriver.) Tawk is a `VendorConfig` over WidgetDriver + a new frame-by-content-marker capability; a real send delivered the full pitch into allurepack.com (ledger -> Pitched), confirmed by `dom_echo`. Outstanding: (a) the "help center" widget variant (mohifashion) reaches the frame+entry but not the composer; (b) reply-capture for tawk (add_init_script visitor-email injection) is the project-wide open question, deliberately deferred.
-- **Real online sends owed (verify-to-composer done, not send-proven):** LiveChat, Chatra, HelpScout, Intercom, and **Zendesk**. Each needs one real send against an ONLINE store, with a human in the loop, to prove transmit + confirm (like Tawk's allurepack send). HelpScout additionally needs its send path built (the "Ask" form is fill-email + Send + a thank-you-state confirm, not type+Enter+dom_echo). Intercom needs its `startConversation` transmit confirmed. Zendesk verified 5/5 to composer via `dry_run`; the send path is plain type+Enter+dom_echo, so the real send just needs a human in the loop.
-- **Zendesk Classic Web Widget variant.** This session's config targets the dominant modern *messaging* widget. The legacy *Classic* widget (iframe#webWidget, `textarea[name="message"]` + a name/email pre-chat form) is a minority (Zendesk deprecated it) and is not yet handled - it needs a second config with `email_strategy="prechat_then_api"` and a webWidget frame marker. Build only if the live pool shows enough Classic stores to matter.
-- **Shopify Inbox - BUILT + DELIVERY PROVEN + MEASURED AT SCALE (2026-06-29), the count leader (~49k).** Own-class `adapters/shopify_inbox.py`: open shadow DOM -> type -> Send -> First/Last/Email form -> Start chat -> dom_echo. The hCaptcha is invisible/passive (passes free). **75-store real-pitch batch via `--force-vendor shopify-inbox`: 24 confirmed delivered, 0 captcha_challenge** - the "challenges at velocity" risk is disproven AND the ForcedVendorAssessor routing is proven end-to-end. The bottleneck now is ADAPTER ROBUSTNESS, not captcha. Status of the four loss buckets:
-  - **submitted_unconfirmed (12) - FIXED IN CODE, pending live validation.** Root cause: the confirm substring-matched a space-joined signature against the thread's `textContent`, which joins DOM nodes with no spaces -> delivered messages missed. Now whitespace-insensitive in a pure tested seam (`_thread_has_pitch`). The 12 prior cases are terminal Dead (committed; correctly never re-pitched), so this only helps NEW sends - validate on a fresh batch.
-  - **form_blocked (10) - FIXED IN CODE, pending live validation.** Root cause: English-only `get_by_placeholder`. Now a locale-robust positional planner (`_plan_form_values`) over the real visible inputs.
-  - **no_launcher / no_send_button / no_composer (12) - STILL OPEN.** Widget-variant selectors the adapter doesn't handle yet; needs real-DOM evidence (the `SI_DEBUG` screenshots from the next HITL run capture these variants).
-  - **no_shopify_inbox (16)** - stale SI tags (not live); raw grep over-counts, as expected. Not fixable (those stores have no live SI).
-  - **VALIDATION OWED (HITL):** `si_fresh80.txt` (80 un-pitched SI candidates) is staged on Server #1. One real-send batch (Nikhil runs) measures whether confirm+form-fill lift the rate above 24/75; run it with `SI_DEBUG=1` so any remaining submitted_unconfirmed dumps the thread text. Command in the checkpoint / README.
-  - Also: the 24 real pitches are live in merchant inboxes with our reply email = the reply-capture test is finally running for real (watch the gate inbox).
-- **Re:amaze (131, best reply-path) - DRIVABLE, deferral was wrong (re-probed 2026-06-29).** The SDK exposes `Shoutbox`/`ShoutboxInit` (the chat composer); `popup()` was the wrong verb. SDK loads lazily (slow-init like Zendesk). Build: wait for the SDK, call `Reamaze.Shoutbox()`, verify-to-composer, then a WidgetDriver config or own class.
-- **Crisp - DRIVABLE, wrongly dropped (re-probed 2026-06-29).** `$crisp.push(['do','chat:open'])` reaches a visible composer (2/4 live); `do` verb present for `message:send`. Small pool (~40+) but a tiny config flips every Crisp store from Dead -> drivable.
-- **False-belief retest backlog (from the 2026-06-29 audit).** Safe (no-send) suspects still to verify: Tidio app-embed/GTM "never loads" (likely slow-init), every `no_X` not-ready treated as terminal, `prechat_blocked_required_fields`=Dead (test if filling flushes), Gorgias headless init + helpdesk-vs-chat tag, has_ai static-label exclusion. Cross-project: CRM site-scrape "DEAD (reCAPTCHA)" and Meta Ad Library "dead" are the same datacenter-IP/passive-captcha trap. Full ledger in the audit result.
+We only need to DELIVER the pitch. It carries our website (mercwise.com) + booking link
+(cal.com/nikhil1/30min), so an interested merchant contacts us. We do NOT capture inbound replies.
+So: the **residential proxy is HELD**, the **Reply Watcher matcher fix is DROPPED**, and priority is
+**breadth across the clean composer vendors** (no captcha, no proxy), with Shopify Inbox on the free
+datacenter path as bonus volume.
+
+## Next up
+
+- **Consolidated clean-vendor delivery batch (HITL, items 2+3 - APPROVED, not yet run).** One
+  `batch_cli <list> --vendors tidio,tawk.to,zendesk,chatra,livechat,crisp --send` over a fresh
+  multi-vendor list: detection routes per store, which fires the **owed first real sends** for Zendesk
+  / Chatra / LiveChat AND delivers the new pitch at volume on the proven vendors (Tidio, Tawk). Needs:
+  a fresh multi-vendor domain list, and confirm scale with Nikhil before firing (real outbound). Crisp
+  is verify-to-composer proven; its first real send happens in this batch. Re:amaze excluded (deferred).
+- **HelpScout send path** still owed: the "Ask" form is fill-email + Send + a thank-you-state confirm,
+  not type+Enter+dom_echo. Intercom: `startConversation` transmit still unconfirmed.
+- **Zendesk Classic Web Widget variant.** The config targets the dominant modern *messaging* widget;
+  the legacy Classic widget (iframe#webWidget, `textarea[name="message"]` + name/email pre-chat) is a
+  minority and unhandled. Build only if the live pool shows enough Classic stores to matter.
+
+## Shopify Inbox (count leader ~49k) - delivery understood, verdict hardened
+
+- **Adapter is double-send-safe (rebuilt 2026-06-29).** The 75-store run proved the real bottleneck is
+  NOT captcha mechanics: the contact-form passive hCaptcha **silently rejects ~half the submissions
+  from a datacenter IP** (committed-delivery decayed 67% -> 48% with cumulative volume, 0 visible
+  challenges). The verdict now treats a clicked send as always-terminal and only retries when nothing
+  posted (provably double-send-safe). 20 wrongly-burned stores were reset to Queued.
+- **SI scaling is on the FREE datacenter path only** (proxy HELD). Revisit a residential proxy ONLY if
+  the clean vendors are tapped out and SI count becomes the binding constraint; an A/B (needs proxy
+  creds) would confirm whether IP reputation is the lever before any spend.
+- **Still open:** widget-variant misses (`no_composer`/`no_launcher` selectors) - the only remaining
+  adapter-robustness bucket, needs real-DOM evidence.
+
+## Vendors built this session
+
+- **Crisp - SHIPPED.** `window.$crisp`, open `chat:open`, composer in the page DOM, dom_echo,
+  email=none. Verify-to-composer 6/18 (33% raw, ~60% of live; rest stale tags). 275 tagged stores.
+- **Re:amaze - BUILT BUT DEFERRED (0/15).** `popup()` opens a MENU, not the composer; the composer is
+  behind an entry click and the about:blank frame needs a menu-stage marker (the composer marker is
+  absent at menu time). Own spike. 848 tagged stores. (research/crisp-reamaze-injection.md)
 
 ## Data / pool
 
-- Apparel-Tidio list is aged (~70% dead accounts). Get a fresher StoreLeads scan and/or add verticals. The gate-liveness check now filters dead accounts cheaply, so a re-run is no longer wasteful.
+- Apparel-Tidio list is aged (~70% dead accounts); the gate-liveness check filters dead accounts
+  cheaply now. StoreLeads lists on Server #1: crisp_stores.txt (275), reamaze_stores.txt (848). Need a
+  fresh multi-vendor list for the consolidated batch.
 
-## Open decisions (Nikhil)
+## Dropped / parked
 
-- Run the Slice 2 parity send on talleyandtwine, then move to Slice 4 (Crisp) for the real breadth proof, or first re-run the now-efficient scale on the ~200 live apparel stores to bank pitches.
-
-## Blocked / unproven
-
-- **Reply capture - first REAL test RUNNING, Reply Watcher LIVE (2026-06-29).** 24 real Shopify Inbox pitches are live in merchant inboxes with our reply email (SI forces an email at its form, so a merchant reply emails back to us). The Reply Watcher is wired and on cron (every 30 min, Server #1, `run_reply_watcher.sh`), watching nikhilthale18@gmail.com; Gmail app password is in `.env.server` (600). 0 replies matched yet (hours old). This is the first genuine reply-capture test (prior "reply" was only a glamnetic Gorgias auto-CSAT bot; the #12 trial-store spike was abandoned). NEXT on this: if/when a reply lands, confirm the matcher catches the real SI reply format and refine if needed.
-- **Reply Watcher is now NON-DESTRUCTIVE** (was a latent footgun): the gate inbox is Nikhil's busy personal inbox (4,159 genuine unread), and the old `(RFC822)` fetch would have marked them all read. Fixed to readonly (EXAMINE) + `BODY.PEEK[]` + `--since-days` window + `--quiet`. [[feedback_never_mark_real_inbox_read]]
+- **Reply Watcher matcher fix - DROPPED** (one-way model; success = cal.com bookings, not inbox
+  replies). The watcher still runs non-destructively but is off the critical path; it over-counts
+  brand-domain marketing emails as "replies" (knesko.com was one). First REAL human reply did land
+  (scoutdesignstudio.com, a decline) - the loop works, we just don't depend on it. [[feedback_never_mark_real_inbox_read]]

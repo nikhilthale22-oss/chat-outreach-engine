@@ -9,32 +9,28 @@ See `CONTEXT.md` for the glossary, `docs/adr/` for decisions, `CHANGELOG.md` for
 
 ## Status (2026-06-29)
 
+**Model: ONE-WAY delivery.** We only need to DELIVER the pitch; it carries our website (mercwise.com) +
+booking link (cal.com/nikhil1/30min), so an interested merchant contacts us. We do NOT capture inbound
+replies. So scale = **breadth across the clean composer vendors** (no captcha, no proxy); the residential
+proxy is held and the reply-watcher matcher is off the critical path. Success = cal.com bookings.
+
 Engine works end-to-end. DOM-drive vendors are configs over a shared `WidgetDriver` (ADR-0007); two get
-their own class. **Real-send proven:** Tidio, Tawk, and **Shopify Inbox** - the count leader (~49k), its
-own class, unlocked 2026-06-29 (the long-standing "CAPTCHA-walled" verdict was wrong; the form's hCaptcha
-is invisible/passive and passes free - real delivery on brandingirons.com). **Verified to composer, real
-send owed:** Zendesk (the biggest live-chat vendor, 5/5), LiveChat, Chatra, HelpScout. **API-send (via
-`ApiSendDriver`):** Gorgias, Intercom (wired, not send-verified). **Drivable, build next (deferrals
-overturned):** Re:amaze (has a `Shoutbox` API), Crisp (`$crisp` reaches a composer). 126 tests green.
+their own class. **Real-send proven:** Tidio, Tawk, Shopify Inbox. **Verify-to-composer proven:** Zendesk
+(5/5), LiveChat, Chatra, HelpScout, **Crisp** (`$crisp` chat:open, page-DOM composer, 6/18). **API-send:**
+Gorgias, Intercom (wired). **Deferred:** Re:amaze (built but 0/15 - `popup()` opens a menu, composer behind
+an entry click, own spike), and the Shopify Inbox residential proxy. 156 tests green.
 
-**A false-belief audit (2026-06-29) found that >half our "blocked/parked/dead" beliefs were never tested**
-(11 PROVEN / 34 SUSPECT / 7 STALE / 11 MEASURED) - four vendors had been written off on untested
-assumptions (Shopify Inbox, Zendesk, Re:amaze, Crisp), all now recovered. Lesson recorded: a gate being
-present is not a gate being enforced - test the actual submission. See `research/` + the audit ledger.
-
-Known gap: Shopify Inbox is JS-injected so the static detector misses it; auto-routing needs a
-browser-layer detect pass (the adapter self-detects, so a known-SI-list run works now).
-
-**The honest foundation, measured (random N=40, production path):** of the ~2,640 apparel-Tidio
-pool, ~7.6% are actually deliverable (~200 live stores) - the rest are dead accounts whose
-static tag lingers. So scale is a **breadth** problem (more vendors), not a speed problem.
+Shopify Inbox (count leader ~49k) is delivery-understood: its passive hCaptcha **silently rejects ~half
+the submissions from a datacenter IP** (not a visible challenge). The send verdict is now provably
+double-send-safe (a clicked send is always terminal; only a never-clicked-still-gated send retries). SI
+rides the free datacenter path as bonus volume.
 
 ## Where it's going
 
-The breadth lever is built: a new DOM-drive vendor is a `VendorConfig` over `WidgetDriver`, and
-the driver now handles same-origin iframe widgets (Tawk). Next: one real HITL send to finalise
-Tawk delivery, then more vendors. The unsolved question remains **reply capture** - whether a
-merchant's reply reliably reaches us (still unproven across thousands of sends; see `PENDING.md`).
+Breadth: a new DOM-drive vendor is a `VendorConfig` over `WidgetDriver`. Next is one consolidated
+clean-vendor `--send` batch with the new one-way pitch - it fires the owed first sends for
+Zendesk/Chatra/LiveChat and delivers at volume on Tidio/Tawk/Crisp (see `PENDING.md`). The first real
+human reply did land (a decline), proving the loop, but the one-way model no longer depends on it.
 
 ## Stack
 
