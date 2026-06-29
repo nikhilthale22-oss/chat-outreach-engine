@@ -12,13 +12,13 @@ scale (Zendesk 654, Re:amaze 131, Intercom 98, HelpScout 49).
 | Gorgias | 484 | API (`GorgiasChat.sendMessage`) | hand-written class | done (not delivery-confirmed) |
 | **Zendesk** | **174** | **DOM-drive** (messaging composer; the async sendMessage API is not needed) | WidgetDriver config (frame by "Messaging window" marker) | **built + verified to composer 5/5** (research/zendesk-injection.md) |
 | Tidio | 59 | DOM-drive | WidgetDriver config | done + real-send proven |
-| **Re:amaze** | **44** | DOM-drive (`Reamaze.popup()`); requires name+email (reply path!) | WidgetDriver config | deferred: popup opens a help-center lightbox, not a chat composer |
+| **Re:amaze** | **44** | DOM-drive via `Reamaze.Shoutbox()` (NOT `popup()`, which opens help-center); requires name+email (reply path!) | WidgetDriver config | drivable - deferral overturned 2026-06-29 (Shoutbox API found; SDK loads lazily) |
 | Intercom | 32 | API (`Intercom('startConversation', msg)`; showNewMessage only prefills) | ApiVendorConfig over ApiSendDriver | BUILT, NOT send-verified |
 | LiveChat | 15 | DOM-drive (no transmit method) | WidgetDriver config (frame by livechatinc.com) | built + verified to composer |
 | Tawk | 14 | DOM-drive | WidgetDriver config (frame by about:srcdoc marker) | done + real-send proven |
 | HelpScout | 11 | DOM-drive (Beacon; "Ask" is a fill+Send form) | WidgetDriver config (frame by #beacon-container) | built + verified to composer |
 | Chatra | 10 | DOM-drive (no transmit method) | WidgetDriver config (frame by chatra.io) | built + verified to composer |
-| Crisp | 8 | API (`$crisp message:send`) | hand-written class | not built (low count) |
+| Crisp | 8 | API (`$crisp` do `message:send`) or DOM (`do chat:open` reaches a composer) | small config | drivable - re-probed 2026-06-29 (composer reached 2/4); not built (low count) |
 
 ## The strategic split
 

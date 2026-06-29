@@ -1,4 +1,30 @@
-# Research: Shopify Inbox injection (#8) - findings 2026-06-22
+# Research: Shopify Inbox injection (#8)
+
+> ## UPDATE 2026-06-29 - UNLOCKED. The 2026-06-23 "CAPTCHA-walled, parked" conclusion below was WRONG.
+>
+> The blocker call concluded from the captcha being PRESENT (the form is labelled "protected by
+> hCaptcha" and once carried g-recaptcha/h-captcha fields) without testing whether it ENFORCES. It does
+> not, at low volume: that hCaptcha is **invisible/passive** (no "I'm not a robot" checkbox). A real
+> HITL test filled the contact form (First/Last/Email), clicked Start chat, and the message **POSTED to
+> the thread with NO challenge** - from a HEADLESS browser on a DATACENTER IP (the worst case for passive
+> scoring). Real delivered sends: **pickityplace.com** (raw flow) and **brandingirons.com** (via the
+> shipped `ShopifyInboxAdapter`, screenshot-confirmed). 6/8 of a fresh random sample reached the composer.
+>
+> So Shopify Inbox IS automatable, free (no captcha solver at low volume), and is the count leader.
+> The current widget: `<inbox-online-store-chat>` OPEN shadow DOM (Playwright CSS pierces it; NOT the
+> old cross-origin `shopify-chat.shopifyapps.com` iframe). Flow: open -> composer `textarea` (data-spec
+> `message-input`, placeholder "Write message") -> click Send (data-spec `message-submit`) -> the
+> "Before we get started" form (First/Last/Email + opt-in) -> Start chat -> message posts. Confirm =
+> dom_echo (token in the rendered thread). Bonus: the form REQUIRES email = a built-in reply path.
+>
+> Built as `adapters/shopify_inbox.py` (its OWN class per ADR-0007; honest `_verdict`: delivered only on
+> token-in-thread, `captcha_challenge` if passive ever flags us, `form_blocked` otherwise). OPEN: the
+> static SignatureDetector misses Shopify Inbox (JS-injected), so the engine needs a browser-layer
+> detect pass (or a known-SI-list run) to route stores here - the adapter self-detects via
+> `no_shopify_inbox`. Also unproven at scale: the invisible-hCaptcha pass-RATE (N≈2) and reply-capture.
+> LESSON: a captcha being present is not a captcha being enforced - test the actual submission.
+
+## (historical) findings 2026-06-22
 
 Goal: an Adapter that injects the Pitch into the Shopify Inbox storefront chat. This is
 the volume vendor (#2: 49,162 apparel stores, ~17x Gorgias).

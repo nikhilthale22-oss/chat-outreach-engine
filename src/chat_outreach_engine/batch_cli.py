@@ -21,11 +21,12 @@ from .adapters import (
     HelpScoutAdapter,
     IntercomAdapter,
     LiveChatAdapter,
+    ShopifyInboxAdapter,
     TawkAdapter,
     TidioAdapter,
     ZendeskAdapter,
 )
-from .batch import BatchRunner
+from .batch import BatchRunner, ForcedVendorAssessor
 from .ledger import Ledger
 
 
@@ -63,17 +64,24 @@ def main(argv=None) -> None:
     ap.add_argument("--vendors", default="tidio",
                     help="comma-separated vendors to enable (default tidio; gorgias send is "
                          "not yet delivery-confirmed)")
+    ap.add_argument("--force-vendor", default=None,
+                    help="treat the whole list as this vendor, skipping static detection (use for "
+                         "shopify-inbox, whose JS-injected widget the static detector misses)")
     args = ap.parse_args(argv)
 
     domains = _read_domains(args.domains_file)
     ledger = Ledger(args.db)
     available = {"gorgias": GorgiasAdapter(), "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
                  "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(), "intercom": IntercomAdapter(),
-                 "helpscout": HelpScoutAdapter(), "zendesk": ZendeskAdapter()}
+                 "helpscout": HelpScoutAdapter(), "zendesk": ZendeskAdapter(),
+                 "shopify-inbox": ShopifyInboxAdapter()}
     enabled = {v.strip() for v in args.vendors.split(",") if v.strip()}
+    if args.force_vendor:
+        enabled.add(args.force_vendor)
     adapters = {k: a for k, a in available.items() if k in enabled}
-    runner = BatchRunner(ledger, adapters, args.email, concurrency=args.concurrency,
-                         assess_concurrency=args.assess_concurrency,
+    assessor = ForcedVendorAssessor(args.force_vendor) if args.force_vendor else None
+    runner = BatchRunner(ledger, adapters, args.email, assessor=assessor,
+                         concurrency=args.concurrency, assess_concurrency=args.assess_concurrency,
                          max_attempts=args.max_attempts, on_event=lambda m: print(m, flush=True))
 
     report = runner.run(domains, dry_run=not args.send, limit=args.limit)

@@ -27,11 +27,19 @@ from .ledger import Ledger, UnknownBrand
 from .pitches import PITCHES
 
 AI_CATEGORY = "ai-chat"
-# Adapter SendResult.detail values that are STRUCTURALLY terminal (will never deliver on a
-# retry), so the Brand is marked Dead instead of re-launching a browser at it forever. Only
-# the documented-terminal one; transient details (no_tidio_api, no_composer, timeouts) stay
-# retryable and are bounded by the attempt cap instead.
-TERMINAL_SEND_DETAILS = {"prechat_blocked_required_fields"}
+# Adapter SendResult.detail values that are STRUCTURALLY terminal (will never deliver on a retry,
+# OR must never be retried because a retry could double-send), so the Brand is marked Dead instead
+# of re-launching a browser at it forever. Transient details (no_tidio_api, no_composer, timeouts)
+# stay retryable and are bounded by the attempt cap instead.
+#   prechat_blocked_required_fields - required fields we cannot satisfy block the send (held).
+#   form_blocked                    - Shopify Inbox contact form we could not complete (held).
+#   captcha_challenge               - Shopify Inbox passive hCaptcha showed a visible challenge.
+#   submitted_unconfirmed           - Shopify Inbox Start chat was clicked (message COMMITTED) but we
+#                                     could not confirm; terminal so a retry can never double-send a
+#                                     real merchant. Honest: not marked pitched (we are not sure), but
+#                                     never re-attempted (we might have).
+TERMINAL_SEND_DETAILS = {"prechat_blocked_required_fields", "form_blocked",
+                         "captcha_challenge", "submitted_unconfirmed"}
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
 
@@ -225,6 +233,22 @@ class LiveAssessor:
             except Exception:
                 continue
         return ""
+
+
+class ForcedVendorAssessor:
+    """Assessor for a KNOWN-vendor list: routes every domain straight to one vendor's Adapter, skipping
+    static signature detection. Needed for Shopify Inbox - its script injects via JS, so the static
+    SignatureDetector never sees it and the normal path would mark every SI store "no chat widget" and
+    Dead before the adapter runs. The adapter does its OWN browser-layer liveness check (returns
+    no_shopify_inbox when the widget is not actually present), so a stale list entry fails safe at send.
+    has_ai is taken as False (these widgets are human chat by default; the no-AI offer framing is the
+    only risk, accepted for a pre-filtered list). Use only when the input list is already one vendor."""
+
+    def __init__(self, vendor: str):
+        self._vendor = vendor
+
+    def __call__(self, domain: str) -> Assessment:
+        return Assessment(domain, True, True, self._vendor, False, True)
 
 
 class BatchRunner:

@@ -4,7 +4,7 @@ The Assessor (live HTTP) and the Adapters (real browsers) are seams, so we fake 
 The Ledger is our own module, used real against a temp DB. We assert behaviour through the
 public interface: the returned BatchReport and the Ledger state.
 """
-from chat_outreach_engine.batch import Assessment, BatchRunner
+from chat_outreach_engine.batch import Assessment, BatchRunner, ForcedVendorAssessor
 from chat_outreach_engine.injector import SendResult
 from chat_outreach_engine.ledger import Ledger
 
@@ -42,6 +42,32 @@ def make(tmp_path, table, sent=True):
     runner = BatchRunner(led, {"tidio": adapter}, "me@x.com",
                          assessor=FakeAssessor(table), pitches=PITCHES, concurrency=2)
     return led, adapter, runner
+
+
+def test_forced_vendor_assessor_routes_to_adapter_without_static_detection(tmp_path):
+    # Shopify Inbox is JS-injected so static detection misses it; the forced assessor routes the whole
+    # list to the adapter (which does its own browser-layer liveness check).
+    led = Ledger(tmp_path / "l.db")
+    adapter = FakeAdapter(sent=True)
+    runner = BatchRunner(led, {"shopify-inbox": adapter}, "me@x.com",
+                         assessor=ForcedVendorAssessor("shopify-inbox"), pitches=PITCHES, concurrency=2)
+    report = runner.run(["ex.com"])
+    assert report.counts.get("pitched") == 1
+    assert led.get_stage("ex.com") == "Pitched"
+    assert adapter.calls and adapter.calls[0][0] == "ex.com"
+
+
+def test_committed_unconfirmed_send_is_terminal_and_never_retried(tmp_path):
+    # submitted_unconfirmed = Start chat was clicked (message committed) but unconfirmed; the batch must
+    # mark it Dead and NOT re-pitch on a later run, or it could double-send a real merchant.
+    led = Ledger(tmp_path / "l.db")
+    adapter = FakeAdapter(sent=False, detail="submitted_unconfirmed")
+    runner = BatchRunner(led, {"tidio": adapter}, "me@x.com",
+                         assessor=FakeAssessor({"ex.com": assess("ex.com")}), pitches=PITCHES, concurrency=2)
+    runner.run(["ex.com"])
+    assert led.get_stage("ex.com") == "Dead"
+    runner.run(["ex.com"])                 # re-run: already Dead -> skipped, adapter not called again
+    assert len(adapter.calls) == 1
 
 
 def test_qualified_brand_is_pitched_with_variant_recorded(tmp_path):
