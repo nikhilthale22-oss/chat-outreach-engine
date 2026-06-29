@@ -24,11 +24,14 @@ Env: HEADED=1 real window; SI_DEBUG=1 screenshots to /tmp/si_dbg_*.png.
 from __future__ import annotations
 
 import os
+import re
 import time
 
 from ..injector import SendResult
 from ..proxy import playwright_proxy
 from ..widget_driver import WidgetDriver
+
+_ALNUM_ONLY = re.compile(r"[^a-z0-9]")    # used by _norm to fold rendered text to a stable match form
 
 SCOPE = "inbox-online-store-chat"               # the custom element; Playwright CSS pierces its open shadow
 COMPOSER = f"{SCOPE} textarea"
@@ -45,6 +48,14 @@ _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 # Delivery is decided in Python (_thread_has_pitch), whitespace-insensitively, because the thread's
 # textContent concatenates DOM nodes WITHOUT spaces and carries newlines/tabs - a byte-for-byte
 # substring check against the source Pitch misses delivered messages (the submitted_unconfirmed bug).
+#
+# form_present is the FULL pre-chat gate, not just "an input exists": a VISIBLE name/email input AND a
+# VISIBLE Start-chat-style button must BOTH be present. This is the only state the verdict trusts as
+# "nothing posted" (for a not-yet-clicked send), so it must be robust against a delivered thread that
+# leaves a lingering email-capture input around (a bare input would false-positive; a delivered thread
+# has no Start-chat button). Visibility uses checkVisibility (opacity/CSS) where available, not a bare
+# bounding box (which stays non-zero for visibility:hidden / opacity:0). thread_text is generous so a
+# just-posted Pitch is never truncated away before the Python-side delivery match.
 _STATE_JS = r"""
 () => {
   const inbox = document.querySelector('inbox-online-store-chat');
@@ -54,12 +65,20 @@ _STATE_JS = r"""
   out.present = true;
   const els=[]; const v=(r)=>{try{r.querySelectorAll('*').forEach(e=>{els.push(e); if(e.shadowRoot) v(e.shadowRoot);});}catch(_){}}; v(inbox.shadowRoot);
   const tag=e=>(e.tagName||'').toLowerCase();
+  const vis=e=>{try{ if(typeof e.checkVisibility==='function') return e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}); const r=e.getBoundingClientRect(); return r.width>2&&r.height>2&&e.offsetParent!==null; }catch(_){return false;}};
+  let gateInput=false, gateButton=false;
   for (const e of els) {
-    if (tag(e)==='textarea') { try{const r=e.getBoundingClientRect(); if(r.width>40&&r.height>10) out.composer_visible=true;}catch(_){} }
-    if (tag(e)==='input') { const ph=(e.getAttribute('placeholder')||'').toLowerCase(); if(ph.includes('name')||ph.includes('email')) out.form_present=true; }
-    if (tag(e)==='iframe' && /hcaptcha/i.test(e.src||'')) { try{const r=e.getBoundingClientRect(); if(r.width>80&&r.height>80) out.challenge_visible=true;}catch(_){} }
+    const t=tag(e);
+    if (t==='textarea') { if(vis(e)){ try{const r=e.getBoundingClientRect(); if(r.width>40&&r.height>10) out.composer_visible=true;}catch(_){} } }
+    if (t==='input') {
+      const blob=((e.getAttribute('placeholder')||'')+' '+(e.getAttribute('name')||'')+' '+(e.getAttribute('type')||'')+' '+(e.getAttribute('aria-label')||'')).toLowerCase();
+      if ((blob.includes('name')||blob.includes('mail')) && vis(e)) gateInput=true;
+    }
+    if (t==='button') { const bt=(e.textContent||'').trim().toLowerCase(); if(/start|begin|continue/.test(bt) && vis(e)) gateButton=true; }
+    if (t==='iframe' && /hcaptcha/i.test(e.src||'')) { try{const r=e.getBoundingClientRect(); if(r.width>80&&r.height>80) out.challenge_visible=true;}catch(_){} }
   }
-  out.thread_text = (inbox.shadowRoot.textContent || '').slice(0, 8000);
+  out.form_present = gateInput && gateButton;
+  out.thread_text = (inbox.shadowRoot.textContent || '').slice(0, 40000);
   return out;
 }
 """
@@ -73,12 +92,23 @@ class ShopifyInboxAdapter:
     def _verdict(state: dict, submitted: bool) -> SendResult:
         """Map a shadow-state snapshot + whether we clicked Start chat to an honest SendResult.
 
-        Order matters. A visible captcha challenge means passive scoring blocked us (NOT delivered).
-        The Pitch signature in the rendered thread is the only POSITIVE proof of delivery. Then the
-        anti-double-send rule: once we have clicked Start chat the message is irreversibly committed,
-        so if it is unconfirmed we return submitted_unconfirmed - a TERMINAL detail (never retried),
-        because re-pitching could double-send a real merchant. Only failures BEFORE submit (the form
-        still up, or never reached) stay retryable, since nothing was committed."""
+        Order encodes a PROVABLY double-send-safe rule (an adversarial review broke the earlier
+        'form_present wins' ordering). By the time we reach a verdict we have ALREADY clicked Send, so a
+        message may have posted; the ONLY state that PROVES nothing posted is 'the pre-chat gate is still
+        fully up AND we never clicked Start chat'. So:
+        1. A visible captcha challenge = passive scoring blocked us, terminal (not delivered).
+        2. The Pitch in the rendered thread = the only POSITIVE proof of delivery.
+        3. We clicked Start chat (`submitted`) => the message is committed => submitted_unconfirmed,
+           TERMINAL. Never retry a clicked send, even if a lingering/post-delivery input makes the form
+           snapshot read present - a retry could double-send a real merchant.
+        4. We did NOT click Start chat but the full gate (form_present, see _STATE_JS: a visible
+           name/email input AND a visible Start-chat button) is still up => nothing posted =>
+           form_blocked, RETRYABLE (re-pitch cannot double-send what never sent).
+        5. Otherwise the form is gone and we never clicked Start chat, yet we DID click Send: a form-less
+           / returning-visitor store may have posted directly on Send => submitted_unconfirmed, TERMINAL.
+        Safety proof: the only RETRYABLE post-Send branch (4) requires not-submitted AND the full gate
+        present, which is incompatible with a posted message (a form-based post needs the Start-chat click;
+        a form-less post leaves no gate), so no delivered message can ever be re-pitched."""
         if state.get("challenge_visible"):
             return SendResult(False, "captcha_challenge")
         if state.get("pitch_in_thread"):
@@ -87,26 +117,42 @@ class ShopifyInboxAdapter:
             return SendResult(False, "submitted_unconfirmed")
         if state.get("form_present"):
             return SendResult(False, "form_blocked")
-        return SendResult(False, "no_delivery_confirmation")
+        return SendResult(False, "submitted_unconfirmed")
+
+    @staticmethod
+    def _error_detail(exc_label: str, committed: bool) -> str:
+        """Map an uncaught exception in send() to a detail string. CRITICAL double-send guard: once Send
+        has been clicked the message MAY have posted (a form-less / returning-visitor store posts directly
+        on Send), so any later exception - a TargetClosedError / proxy drop / crash mid-confirm, common at
+        scale - must be TERMINAL (submitted_unconfirmed), never a raw retryable error string. Exceptions
+        BEFORE the Send click (goto/open/composer) are genuinely not-committed and stay retryable."""
+        return "submitted_unconfirmed" if committed else exc_label
+
+    @staticmethod
+    def _norm(s: str) -> str:
+        """Fold a string to lowercase alphanumerics only - dropping whitespace, punctuation, quotes and
+        any HTML-decoded glyphs. This makes the delivery match robust to how the widget RENDERS our text:
+        textContent joins DOM nodes with no spaces, smart-quotes the apostrophe (don't -> don[U+2019]t),
+        and wraps lines - none of which change the alphanumeric run, so a delivered Pitch still matches."""
+        return _ALNUM_ONLY.sub("", (s or "").lower())
 
     @staticmethod
     def _match_key(pitch: str) -> str:
-        """A distinctive, WHITESPACE-FREE slice from the start of the Pitch - the key we look for in the
-        rendered thread. Whitespace-stripped (not just normalised to spaces) because the thread's
-        textContent joins DOM nodes with no spaces; a 32-char run from the Pitch opening is long enough
-        to be unique to us yet survives any wrap/node-split. Empty Pitch -> empty key (never matches)."""
-        return "".join((pitch or "").split())[:32]
+        """A distinctive, normalised slice from the start of the Pitch - the key we look for in the
+        rendered thread. 72 alphanumerics is long enough to (a) be unique to us and (b) reach past the
+        shared PITCH_A/PITCH_B opener into the divergent copy, so a B-send is not confirmed off an
+        A-message in a shared thread. Empty Pitch -> empty key (never matches)."""
+        return ShopifyInboxAdapter._norm(pitch)[:72]
 
     @staticmethod
     def _thread_has_pitch(thread_text: str, pitch: str) -> bool:
-        """Did our Pitch actually render in the thread? Compare whitespace-insensitively: strip ALL
-        whitespace from both sides, then substring-check the Pitch's match key. This recovers delivered
-        messages the old space-joined check missed (the submitted_unconfirmed bucket), while a short
-        shared word like "interested" still cannot confirm (the key is a 32-char run from the opening)."""
+        """Did our Pitch actually render in the thread? Compare on normalised (alphanumeric-only) text on
+        both sides, then substring-check the Pitch's match key. Robust to whitespace, smart-quotes and
+        HTML entities (see _norm), while a short shared word like "interested" still cannot confirm."""
         key = ShopifyInboxAdapter._match_key(pitch)
         if not key:
             return False
-        return key in "".join((thread_text or "").split())
+        return key in ShopifyInboxAdapter._norm(thread_text)
 
     @staticmethod
     def _plan_form_values(fields: list, first: str, last: str, email: str) -> list:
@@ -150,6 +196,7 @@ class ShopifyInboxAdapter:
                 except Exception:
                     pass
 
+        committed = False     # set once Send is clicked: from here, no exception may be retryable
         with sync_playwright() as p:
             browser = None
             try:
@@ -185,6 +232,8 @@ class ShopifyInboxAdapter:
                 time.sleep(0.4)
                 if not self._click_send(page, composer):
                     return SendResult(False, "no_send_button")
+                committed = True                      # Send clicked: a form-less store may post NOW; from
+                #                                       here any exception must be terminal, not retryable
                 time.sleep(3)
                 shot(page, "2_form")
 
@@ -213,7 +262,7 @@ class ShopifyInboxAdapter:
                         pass
                 return self._verdict(state, submitted)
             except Exception as e:
-                return SendResult(False, f"{type(e).__name__}: {str(e)[:140]}")
+                return SendResult(False, self._error_detail(f"{type(e).__name__}: {str(e)[:140]}", committed))
             finally:
                 if browser:
                     try:
@@ -304,7 +353,12 @@ class ShopifyInboxAdapter:
             try:
                 b = scope.get_by_role("button", name=name).first
                 if b.count() and b.is_enabled(timeout=800):
-                    b.click(timeout=4000)
+                    try:
+                        b.click(timeout=4000)
+                    except Exception:
+                        pass   # the click was DISPATCHED to an enabled gate button; if it then raised on
+                        #        post-click actionability we cannot know it failed, so report submitted
+                        #        (conservative: never re-pitch a possibly-posted send) rather than retry.
                     return True
             except Exception:
                 continue

@@ -32,13 +32,16 @@ AI_CATEGORY = "ai-chat"
 # of re-launching a browser at it forever. Transient details (no_tidio_api, no_composer, timeouts)
 # stay retryable and are bounded by the attempt cap instead.
 #   prechat_blocked_required_fields - required fields we cannot satisfy block the send (held).
-#   form_blocked                    - Shopify Inbox contact form we could not complete (held).
 #   captcha_challenge               - Shopify Inbox passive hCaptcha showed a visible challenge.
-#   submitted_unconfirmed           - Shopify Inbox Start chat was clicked (message COMMITTED) but we
-#                                     could not confirm; terminal so a retry can never double-send a
-#                                     real merchant. Honest: not marked pitched (we are not sure), but
-#                                     never re-attempted (we might have).
-TERMINAL_SEND_DETAILS = {"prechat_blocked_required_fields", "form_blocked",
+#   submitted_unconfirmed           - Shopify Inbox: form GONE + Start chat clicked + no render = the
+#                                     message genuinely COMMITTED but unconfirmable; terminal so a retry
+#                                     can never double-send a real merchant. Honest: not marked pitched
+#                                     (we are not sure), but never re-attempted (we might have).
+# NOTE: form_blocked is NOT terminal. The 75-store run proved (SI_DEBUG dumps) that a Shopify Inbox
+# contact form STILL VISIBLE after our click means the submission was silently rejected and NOTHING was
+# posted - so it is RETRYABLE (re-pitch cannot double-send what never sent). Marking it terminal burned
+# ~20 re-pitchable stores as Dead. The attempt cap still bounds the retries.
+TERMINAL_SEND_DETAILS = {"prechat_blocked_required_fields",
                          "captcha_challenge", "submitted_unconfirmed"}
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")

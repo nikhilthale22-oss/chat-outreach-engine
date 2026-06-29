@@ -29,9 +29,21 @@ def test_verdict_visible_challenge_is_not_delivered_even_if_pitch_present():
     assert r.sent is False and r.detail == "captcha_challenge"
 
 
-def test_verdict_submitted_but_unconfirmed_is_terminal_to_prevent_double_send():
-    # Start chat was clicked (message committed) but no confirmation -> never retry, or we could double-send
-    r = ShopifyInboxAdapter._verdict({"pitch_in_thread": False, "form_present": False}, submitted=True)
+def test_verdict_clicked_start_chat_is_always_terminal_even_if_form_lingers():
+    # SAFETY INVARIANT (double-send): once Start chat is clicked the message may be committed, so the
+    # send is NEVER retryable - regardless of whether the form snapshot still reads present (a lingering
+    # / post-delivery input could false-positive form_present). `submitted` wins over form_present.
+    gone = ShopifyInboxAdapter._verdict({"pitch_in_thread": False, "form_present": False}, submitted=True)
+    lingering = ShopifyInboxAdapter._verdict({"pitch_in_thread": False, "form_present": True}, submitted=True)
+    assert gone == SendResult(False, "submitted_unconfirmed")
+    assert lingering == SendResult(False, "submitted_unconfirmed")
+
+
+def test_verdict_form_gone_not_clicked_no_render_is_terminal_formless_directpost():
+    # We ALWAYS clicked Send before the verdict. If the form is gone and we never clicked Start chat and
+    # nothing rendered, a form-less / returning-visitor store may have posted directly on Send -> treat as
+    # committed-unconfirmable (TERMINAL), never a clean retryable miss (that was the form-less double-send).
+    r = ShopifyInboxAdapter._verdict({"pitch_in_thread": False, "form_present": False}, submitted=False)
     assert r.sent is False and r.detail == "submitted_unconfirmed"
 
 
@@ -40,16 +52,25 @@ def test_verdict_lingering_form_without_submit_is_held():
     assert r.sent is False and r.detail == "form_blocked"
 
 
-def test_verdict_no_signal_and_no_submit_is_retryable_unconfirmed():
-    # nothing was committed, so this is a normal retryable miss (not a double-send risk)
-    r = ShopifyInboxAdapter._verdict({"pitch_in_thread": False, "form_present": False}, submitted=False)
-    assert r.sent is False and r.detail == "no_delivery_confirmation"
+def test_error_after_send_clicked_is_terminal_not_retryable():
+    # SAFETY: once Send is clicked the message MAY have posted (form-less stores post on Send). ANY later
+    # exception (TargetClosedError / proxy drop / crash, common at scale) must yield a TERMINAL detail,
+    # never a raw retryable error string - or the next run re-pitches a possibly-delivered merchant.
+    assert ShopifyInboxAdapter._error_detail("TargetClosedError: page closed", committed=True) == "submitted_unconfirmed"
 
 
-def test_submitted_unconfirmed_is_terminal_in_batch():
-    # the batch must treat a committed-but-unconfirmed send as terminal (Dead), never re-pitch it
+def test_error_before_send_stays_retryable():
+    # failed BEFORE clicking Send -> nothing posted -> keep the raw error string (retryable)
+    assert ShopifyInboxAdapter._error_detail("TimeoutError: goto", committed=False) == "TimeoutError: goto"
+
+
+def test_only_genuinely_committed_details_are_terminal_in_batch():
+    # submitted_unconfirmed (form GONE + clicked = committed) and a visible captcha stay terminal so a
+    # retry can never double-send. form_blocked (form STILL UP = nothing posted) is now RETRYABLE - it
+    # must NOT be terminal, or we permanently burn stores the silent-reject merely failed on once.
     from chat_outreach_engine.batch import TERMINAL_SEND_DETAILS
-    assert {"submitted_unconfirmed", "form_blocked", "captcha_challenge"} <= TERMINAL_SEND_DETAILS
+    assert {"submitted_unconfirmed", "captcha_challenge"} <= TERMINAL_SEND_DETAILS
+    assert "form_blocked" not in TERMINAL_SEND_DETAILS
 
 
 # ----- confirm robustness: the rendered thread text rarely matches the source Pitch byte-for-byte -----
@@ -78,6 +99,22 @@ def test_thread_has_pitch_false_on_common_word_overlap_only():
     # the widget's own canned text shares the word "interested" with PITCH_A; that must NOT confirm a send
     from chat_outreach_engine.pitches import PITCH_A
     assert ShopifyInboxAdapter._thread_has_pitch("Thanks! Are you interested in a quick demo?", PITCH_A) is False
+
+
+def test_thread_has_pitch_tolerates_smart_quotes_and_html_entities():
+    # chat widgets routinely smart-quote (don't -> don[U+2019]t); the source Pitch has an ASCII apostrophe.
+    # The match folds ALL non-alphanumerics, so a genuinely delivered message still confirms - otherwise a
+    # smart-quoting store reads delivered messages as not-delivered (a confirm false-negative).
+    from chat_outreach_engine.pitches import PITCH_A
+    smart = "You sent: " + PITCH_A.replace("'", "’")
+    assert ShopifyInboxAdapter._thread_has_pitch(smart, PITCH_A) is True
+
+
+def test_match_key_differs_between_pitch_variants():
+    # PITCH_A and PITCH_B share an opening; the key must reach far enough to differ, or a variant-B send
+    # could read 'delivered' off a variant-A message (masking a real double-send in a shared thread).
+    from chat_outreach_engine.pitches import PITCH_A, PITCH_B
+    assert ShopifyInboxAdapter._match_key(PITCH_A) != ShopifyInboxAdapter._match_key(PITCH_B)
 
 
 def test_thread_has_pitch_false_on_empty_pitch():
