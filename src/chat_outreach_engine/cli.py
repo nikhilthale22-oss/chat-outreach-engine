@@ -11,10 +11,12 @@ import argparse
 
 from .adapters import (
     ChatraAdapter,
+    CrispAdapter,
     GorgiasAdapter,
     HelpScoutAdapter,
     IntercomAdapter,
     LiveChatAdapter,
+    ReamazeAdapter,
     ShopifyInboxAdapter,
     TawkAdapter,
     TidioAdapter,
@@ -45,7 +47,8 @@ def main(argv=None) -> None:
                          "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
                          "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(),
                          "intercom": IntercomAdapter(), "helpscout": HelpScoutAdapter(),
-                         "zendesk": ZendeskAdapter()})
+                         "zendesk": ZendeskAdapter(), "crisp": CrispAdapter(),
+                         "reamaze": ReamazeAdapter()})
     out = injector.process(
         domain, args.pitch, args.email, pitch_variant=args.variant, dry_run=not args.send
     )

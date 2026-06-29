@@ -17,10 +17,12 @@ import sys
 
 from .adapters import (
     ChatraAdapter,
+    CrispAdapter,
     GorgiasAdapter,
     HelpScoutAdapter,
     IntercomAdapter,
     LiveChatAdapter,
+    ReamazeAdapter,
     ShopifyInboxAdapter,
     TawkAdapter,
     TidioAdapter,
@@ -74,7 +76,8 @@ def main(argv=None) -> None:
     available = {"gorgias": GorgiasAdapter(), "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
                  "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(), "intercom": IntercomAdapter(),
                  "helpscout": HelpScoutAdapter(), "zendesk": ZendeskAdapter(),
-                 "shopify-inbox": ShopifyInboxAdapter()}
+                 "shopify-inbox": ShopifyInboxAdapter(), "crisp": CrispAdapter(),
+                 "reamaze": ReamazeAdapter()}
     enabled = {v.strip() for v in args.vendors.split(",") if v.strip()}
     if args.force_vendor:
         enabled.add(args.force_vendor)
