@@ -93,10 +93,15 @@ class ReplyWatcher:
         return results
 
 
-def imap_fetch_unseen(host: str, user: str, password: str, mailbox: str = "INBOX"):
+def imap_fetch_unseen(host: str, user: str, password: str, mailbox: str = "INBOX",
+                      since: str | None = None):
     """Build a fetch_unseen() that pulls UNSEEN messages from a Gmail inbox over IMAP SSL.
-    Marks them seen by virtue of the RFC822 fetch. Lazy imports so the package imports without
-    a live inbox in tests."""
+
+    NON-DESTRUCTIVE: the mailbox is opened readonly (EXAMINE) and messages are fetched with
+    BODY.PEEK[], so we NEVER flip the inbox's real unread mail to read. The gate inbox may be a
+    busy personal inbox (thousands of genuine unread) - marking those seen would be unforgivable.
+    `since` (an IMAP date like "22-Jun-2026") narrows to recent mail so a backlog of old unread is
+    not rescanned every poll. Lazy imports so the package imports without a live inbox in tests."""
     def fetch() -> list:
         import email as emaillib
         import imaplib
@@ -105,10 +110,11 @@ def imap_fetch_unseen(host: str, user: str, password: str, mailbox: str = "INBOX
         m = imaplib.IMAP4_SSL(host)
         try:
             m.login(user, password)
-            m.select(mailbox)
-            _, data = m.search(None, "UNSEEN")
+            m.select(mailbox, readonly=True)        # EXAMINE: server won't set \Seen on fetch
+            criteria = ["UNSEEN"] + (["SINCE", since] if since else [])
+            _, data = m.search(None, *criteria)
             for uid in (data[0].split() if data and data[0] else []):
-                _, msgdata = m.fetch(uid, "(RFC822)")
+                _, msgdata = m.fetch(uid, "(BODY.PEEK[])")   # PEEK: does not set \Seen
                 if not msgdata or not msgdata[0]:
                     continue
                 msg = emaillib.message_from_bytes(msgdata[0][1])
