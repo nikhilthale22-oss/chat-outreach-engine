@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-29 (latest) - Reply Watcher live + made non-destructive
+
+- **Reply Watcher wired and on cron (every 30 min, Server #1).** Generated a Gmail app password for the gate inbox (nikhilthale18@gmail.com) by driving Brave through Google's re-auth (Nikhil cleared a passkey); stored only in `.env.server` (600). The reply-capture loop - the project's long-unproven core - is now running for the first time against the 24 real Shopify Inbox pitches (which left a real reply address). 0 replies matched yet (hours old).
+- **Fixed a latent destructive bug in `imap_fetch_unseen`.** The gate inbox is Nikhil's busy personal inbox (4,159 genuine unread); the old `(RFC822)` fetch sets `\Seen`, so a run would have marked thousands of his real emails read (unrecoverable). Now opens the mailbox readonly (EXAMINE) and fetches `BODY.PEEK[]` (never marks seen). Added `--since-days` (default 7, so a busy inbox is not rescanned from the backlog) and `--quiet` (so a cron does not log personal mail senders/subjects). `run_reply_watcher.sh` wrapper added. 130 tests green. (`reply_watcher.py`, `reply_watcher_cli.py`)
+
 ## 2026-06-29 (later) - Shopify Inbox measured at scale
 
 - **75-store real-pitch batch via `--force-vendor shopify-inbox` (one datacenter IP): 24 confirmed delivered, 0 captcha_challenge.** The "passive hCaptcha will challenge at velocity" risk is disproven - captcha is NOT the bottleneck - and the `ForcedVendorAssessor` routing is proven end-to-end. Breakdown of the rest: submitted_unconfirmed 12 (confirm too strict; some likely delivered, held terminal to avoid double-send), form_blocked 10 (form-fill varies by store/locale), no_launcher/no_send_button/no_composer 12 (widget variants), no_shopify_inbox 16 (stale tags). So delivery is ~32% of raw candidates / ~41% of live SI; the remaining lift is adapter robustness (confirm + form-fill + launcher/send variants), not captcha. The 24 pitches are live in merchant inboxes with our reply email = the reply-capture test is finally running.
