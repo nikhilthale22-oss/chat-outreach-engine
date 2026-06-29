@@ -50,3 +50,78 @@ def test_submitted_unconfirmed_is_terminal_in_batch():
     # the batch must treat a committed-but-unconfirmed send as terminal (Dead), never re-pitch it
     from chat_outreach_engine.batch import TERMINAL_SEND_DETAILS
     assert {"submitted_unconfirmed", "form_blocked", "captcha_challenge"} <= TERMINAL_SEND_DETAILS
+
+
+# ----- confirm robustness: the rendered thread text rarely matches the source Pitch byte-for-byte -----
+# (this is what turned ~12 committed sends into false submitted_unconfirmed at scale: the thread's
+#  textContent concatenates DOM nodes without spaces and carries newlines/tabs, so a space-joined
+#  signature substring-check missed delivered messages. The match must be whitespace-insensitive.)
+
+def test_thread_has_pitch_confirms_exact_render():
+    thread = "Chat You sent: Hey, saw you don't have an AI chatbot on your site. Built one"
+    assert ShopifyInboxAdapter._thread_has_pitch(thread, "Hey, saw you don't have an AI chatbot on your site.") is True
+
+
+def test_thread_has_pitch_tolerates_rendering_whitespace_variance():
+    # node-split / wrapped render: words joined, newlines and tabs where the Pitch had single spaces
+    pitch = "Hey, saw you don't have an AI chatbot on your site."
+    thread = "Hey,saw  you\ndon't\thave an AI\nchatbot on your\tsite."
+    assert ShopifyInboxAdapter._thread_has_pitch(thread, pitch) is True
+
+
+def test_thread_has_pitch_false_when_pitch_absent():
+    assert ShopifyInboxAdapter._thread_has_pitch("Hi there, how can we help you today?",
+                                                 "Hey, saw you don't have an AI chatbot on your site.") is False
+
+
+def test_thread_has_pitch_false_on_common_word_overlap_only():
+    # the widget's own canned text shares the word "interested" with PITCH_A; that must NOT confirm a send
+    from chat_outreach_engine.pitches import PITCH_A
+    assert ShopifyInboxAdapter._thread_has_pitch("Thanks! Are you interested in a quick demo?", PITCH_A) is False
+
+
+def test_thread_has_pitch_false_on_empty_pitch():
+    # never claim delivery off an empty Pitch (a stripped empty key would substring-match anything)
+    assert ShopifyInboxAdapter._thread_has_pitch("any thread text at all", "") is False
+
+
+# ----- form-fill robustness: the "Before we get started" form varies by store/locale (form_blocked) ---
+# The fill must assign by field TYPE/keyword + POSITION, not English placeholders, or non-English /
+# variant forms never submit. The planner returns a value per field (parallel list); None = leave blank.
+
+def test_form_plan_standard_english():
+    fields = [{"type": "text", "placeholder": "First Name", "name": "first_name"},
+              {"type": "text", "placeholder": "Last Name", "name": "last_name"},
+              {"type": "email", "placeholder": "Email", "name": "email"}]
+    assert ShopifyInboxAdapter._plan_form_values(fields, "Nikhil", "Thale", "me@x.com") == \
+        ["Nikhil", "Thale", "me@x.com"]
+
+
+def test_form_plan_email_detected_by_keyword_when_type_is_text():
+    # some stores render the email input as type=text; detect it by placeholder/name keyword, not type
+    fields = [{"type": "text", "placeholder": "First Name", "name": "first"},
+              {"type": "text", "placeholder": "Last Name", "name": "last"},
+              {"type": "text", "placeholder": "Email", "name": "email"}]
+    assert ShopifyInboxAdapter._plan_form_values(fields, "Nikhil", "Thale", "me@x.com") == \
+        ["Nikhil", "Thale", "me@x.com"]
+
+
+def test_form_plan_non_english_placeholders_fill_positionally():
+    # French store: names have no English placeholder; email caught by type -> names fill by position
+    fields = [{"type": "text", "placeholder": "Prenom", "name": ""},
+              {"type": "text", "placeholder": "Nom", "name": ""},
+              {"type": "email", "placeholder": "Courriel", "name": ""}]
+    assert ShopifyInboxAdapter._plan_form_values(fields, "Nikhil", "Thale", "me@x.com") == \
+        ["Nikhil", "Thale", "me@x.com"]
+
+
+def test_form_plan_single_name_field_gets_full_name():
+    fields = [{"type": "text", "placeholder": "Your name", "name": "name"},
+              {"type": "email", "placeholder": "Email", "name": "email"}]
+    assert ShopifyInboxAdapter._plan_form_values(fields, "Nikhil", "Thale", "me@x.com") == \
+        ["Nikhil Thale", "me@x.com"]
+
+
+def test_form_plan_email_only():
+    fields = [{"type": "email", "placeholder": "Email", "name": "email"}]
+    assert ShopifyInboxAdapter._plan_form_values(fields, "Nikhil", "Thale", "me@x.com") == ["me@x.com"]
