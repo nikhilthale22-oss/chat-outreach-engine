@@ -27,5 +27,5 @@
 
 ## Blocked / unproven
 
-- **Reply capture unproven.** Only reply ever seen = a glamnetic Gorgias auto-CSAT (a bot). The reply-round-trip spike (#12) was abandoned (a trial Tidio account won't surface a localhost-widget conversation). ADR-0002's "every vendor emails the reply" stays unverified; a dashboard-poll fallback may be needed.
-- **IMAP app password** for nikhilthale18@gmail.com not provided, so the Reply Watcher can't run automated.
+- **Reply capture - first REAL test now running.** 24 real Shopify Inbox pitches (2026-06-29) are live in merchant inboxes with our reply email; SI forces an email at its form, so a merchant reply emails back to us. This is the first genuine reply-capture test (prior "reply" was only a glamnetic Gorgias auto-CSAT bot; the #12 trial-store spike was abandoned). Once the Reply Watcher is wired, watch nikhilthale18@gmail.com.
+- **Reply Watcher IMAP - app password generation IN FLIGHT (blocked on Nikhil's passkey).** Gate inbox = nikhilthale18@gmail.com (Nikhil's choice 2026-06-29). Generating the app password by driving his Brave hit Google's passkey re-auth (Touch ID, native dialog) - HITL. Once he clears it: create the app password, write to `.env.server` on Server #1, run the Reply Watcher.
