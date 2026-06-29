@@ -1,5 +1,13 @@
 """ReamazeAdapter: the Adapter for Re:amaze (Reamaze) chat widgets.
 
+STATUS (2026-06-29): BUILT BUT NOT YET WORKING AT SCALE - do not rely on it. Verify-to-composer
+measured 0/15: Reamaze.popup() opens a MENU ("Contact Us" / "Contact Us Directly" / "Find an order"),
+not the composer, so the composer sits behind an entry click AND the about:blank widget frame cannot
+be resolved by the composer marker (it is not present at the menu stage). Some stores also bring up no
+frame at all in the window. The remaining work (its own spike): resolve the about:blank frame by a
+MENU-stage marker, click the "Contact Us Directly"/"Send us a message" entry inside it, then drive the
+revealed composer. Crisp shipped fine; Re:amaze is parked here with the mechanics captured.
+
 Re:amaze is DOM-drive (a VendorConfig over WidgetDriver, ADR-0007), established by live probes
 (research/crisp-reamaze-injection.md), which overturned the earlier "defer Re:amaze" call:
 

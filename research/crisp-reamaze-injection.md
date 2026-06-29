@@ -28,9 +28,14 @@ DOM-drive `VendorConfig`s over the shared `WidgetDriver` (ADR-0007), not new cla
 - **Email gate:** none (one-way model). Confirm: `dom_echo`.
 - **Probe result:** messier than Crisp. Of 7 tagged stores, 1 surfaced the composer cleanly via
   `popup()`; several had `_support` set but `window.Reamaze` had not loaded within the probe window
-  (lazy SDK), and a couple had `Reamaze` but `popup()` did not surface a composer in time. So the
-  long ready-wait matters, and measured reach is well below the raw tag count. Re-measure verify-to-
-  composer at scale before trusting the rate.
+  (lazy SDK), and a couple had `Reamaze` but `popup()` did not surface a composer in time.
+- **Verify-to-composer at scale: 0/15 (2026-06-29). NOT working yet.** Of 15 tagged stores: 9
+  no_composer, 4 no_reamaze_api (lazy/dead SDK), 2 navigation errors. A frame dump on a no_composer
+  store showed WHY: `popup()` opens a MENU in the about:blank iframe ("Contact Us", buttons "Find an
+  order" / "Contact Us Directly"), NOT the composer. So the single rubbercal success was a no-menu
+  store; most show a menu first. The fix (deferred, its own spike): resolve the about:blank frame by a
+  MENU-stage marker (the composer marker is absent at menu time), click "Contact Us Directly" / "Send
+  us a message" inside the frame, then drive the revealed composer. Re:amaze is parked, not shipped.
 
 ## One-way model note
 
