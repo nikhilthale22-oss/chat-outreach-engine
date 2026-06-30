@@ -1,6 +1,14 @@
 # Changelog
 
-## 2026-06-30 (latest) - Capacity + pool map; the 8M raw file is not a cheap pool
+## 2026-06-30 (latest) - Untapped-vendor spike: Olark + Zoho SalesIQ shipped
+
+- **Two new drivable vendors, both measured on the production path** (`research/widget-vendor-spike.md`). Extracted column-aware per-vendor qualified (no-AI) lists from `domains_export.csv` (it has `technologies`/`installed_apps_names`/`tags`), then spiked each candidate on live stores (`research/widget_discover_v2.py`, `widget_reprobe.py`) and verified to-composer on a random 20 (`research/verify_vendor.py`, `WidgetDriver.send(dry_run=True)` - transmits nothing).
+- **Olark - SHIPPED** (`adapters/olark.py`): `window.olark`, open `olark('api.box.expand')`, composer is a page-DOM `textarea[id^='olark-custom-element']` (no iframe; the name/email inputs are inline, not a gate), `email_strategy=none`, dom_echo. **Verify-to-composer 14/20 (70%)** - the strongest new vendor (misses: 4 stale `no_olark_api`, 2 pre-chat-gated `no_composer`).
+- **Zoho SalesIQ - SHIPPED** (`adapters/zoho_salesiq.py`): `window.$zoho.salesiq`, open via `floatwindow.visible('show')` + `chat.start()`, composer `textarea#msgarea` in an `about:blank` frame resolved by in-frame content marker (same mechanism as Tawk), `email_strategy=none`, dom_echo. **Verify-to-composer 7/20 (35%)** (9/20 `no_composer` = Zoho gates the box behind a pre-chat/entry step the open verbs do not fully surface yet; a future lift, 35% shippable now).
+- **Deferred / dropped, with receipts:** Kustomer + Richpanel globals are live on real installs but no composer iframe mounts from a JS `open()` headless (need a launcher-click spike) - DEFER. Freshchat / Gladly / Freshdesk tags are stale in the sample (globals absent) - DROP. Full table in the spike doc.
+- +14 tests (Olark 7, Zoho 7), **170 green**. Adapters registered in `cli.py` + `batch_cli.py` (`olark`, `zoho-salesiq`); both already had detector signatures.
+
+## 2026-06-30 - Capacity + pool map; the 8M raw file is not a cheap pool
 
 - **Measured capacity:** ~14.5k deliverable now, ~97% Shopify Inbox (free datacenter path, throttled); Tidio ~420. Per-vendor tagged pools mapped (~94k drivable total, SI 73.5k dominating) + ~2.5k untapped qualified vendors (Richpanel/Freshchat/Zoho/Olark...). `research/pool-and-capacity.md`.
 - **The 8M "main file" (combined_domains.csv) is NOT a cheap pool.** It is domain+platform only (no chat tags); a fetch+detect feasibility test from Server #1 got 41% fetch / **1% chat-vendor density** (datacenter-IP blocks + JS-injected widgets miss a static fetch). So the pool grows by activating the StoreLeads-tagged 94k (verify Gorgias +6.2k, build untapped vendors, extract per-vendor lists), not by re-scanning the raw file. Depth beyond 94k = a richer StoreLeads export with the tag columns.

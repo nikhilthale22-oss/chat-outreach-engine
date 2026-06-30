@@ -16,11 +16,13 @@ from .adapters import (
     HelpScoutAdapter,
     IntercomAdapter,
     LiveChatAdapter,
+    OlarkAdapter,
     ReamazeAdapter,
     ShopifyInboxAdapter,
     TawkAdapter,
     TidioAdapter,
     ZendeskAdapter,
+    ZohoSalesIQAdapter,
 )
 from .detect import SignatureDetector
 from .injector import Injector
@@ -48,7 +50,8 @@ def main(argv=None) -> None:
                          "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(),
                          "intercom": IntercomAdapter(), "helpscout": HelpScoutAdapter(),
                          "zendesk": ZendeskAdapter(), "crisp": CrispAdapter(),
-                         "reamaze": ReamazeAdapter()})
+                         "reamaze": ReamazeAdapter(), "olark": OlarkAdapter(),
+                         "zoho-salesiq": ZohoSalesIQAdapter()})
     out = injector.process(
         domain, args.pitch, args.email, pitch_variant=args.variant, dry_run=not args.send
     )

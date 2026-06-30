@@ -22,11 +22,13 @@ from .adapters import (
     HelpScoutAdapter,
     IntercomAdapter,
     LiveChatAdapter,
+    OlarkAdapter,
     ReamazeAdapter,
     ShopifyInboxAdapter,
     TawkAdapter,
     TidioAdapter,
     ZendeskAdapter,
+    ZohoSalesIQAdapter,
 )
 from .batch import BatchRunner, ForcedVendorAssessor
 from .ledger import Ledger
@@ -77,7 +79,8 @@ def main(argv=None) -> None:
                  "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(), "intercom": IntercomAdapter(),
                  "helpscout": HelpScoutAdapter(), "zendesk": ZendeskAdapter(),
                  "shopify-inbox": ShopifyInboxAdapter(), "crisp": CrispAdapter(),
-                 "reamaze": ReamazeAdapter()}
+                 "reamaze": ReamazeAdapter(), "olark": OlarkAdapter(),
+                 "zoho-salesiq": ZohoSalesIQAdapter()}
     enabled = {v.strip() for v in args.vendors.split(",") if v.strip()}
     if args.force_vendor:
         enabled.add(args.force_vendor)

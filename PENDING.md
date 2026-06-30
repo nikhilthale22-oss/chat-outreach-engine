@@ -21,10 +21,17 @@ store gets ONE pitch, so the POOL is the ceiling. Per-vendor pools + receipts:
   - **Verify Gorgias** (+6,220) - already tagged AND wired (ApiSendDriver), just never delivery-
     confirmed, so those 6.2k are currently unusable. One verification send flips them on. Biggest
     pool-per-effort win after SI.
-  - **Build the untapped drivable+qualified vendors** (~2.5k): Richpanel 578, Freshchat 528, Freshdesk
-    447, Zoho SalesIQ 268, Kustomer 245, Olark 218, Gladly 196 - spike -> VendorConfig -> verify-to-
-    composer, same as Crisp. (Exclude already-AI tags: ChatBot, Gobot, ManyChat, Drift.)
-  - Extract qualified (no-AI) per-vendor lists from `domains_export.csv` so all 94k is drivable.
+  - **Untapped vendors - spiked 2026-06-30** (`research/widget-vendor-spike.md`):
+    - **Olark SHIPPED** (verify-to-composer 70%) and **Zoho SalesIQ SHIPPED** (35%). Both in the
+      engine + registered; per-vendor qualified lists extracted from `domains_export.csv`.
+    - **Kustomer + Richpanel = DEFER** - globals live on real installs but no composer iframe mounts
+      from a headless JS `open()`; they need a launcher-click spike (own task, uncertain yield).
+    - **Freshchat / Gladly / Freshdesk = DROP** - tags stale in the sample (globals absent); revisit
+      only if a fresher tagged list shows them live.
+    - **Zoho lift (optional):** 9/20 misses were `no_composer` = Zoho gating behind a pre-chat/entry
+      step; an entry-click-before-composer spike would raise the 35%.
+  - Extract qualified (no-AI) per-vendor lists for the MAIN vendors (SI/Tidio/Zendesk/...) from
+    `domains_export.csv` so all 94k is drivable for the consolidated send batch (still to do).
 - **Depth beyond 94k = a richer StoreLeads export** (WITH technologies/installed_apps columns - the 8M
   file lacks them - and a mid-market revenue band). Nikhil pulls when back in StoreLeads.
 
