@@ -1,6 +1,12 @@
 # Changelog
 
-## 2026-06-29 (latest) - One-way pivot, double-send-safe SI verdict, Crisp shipped
+## 2026-06-30 (latest) - Capacity + pool map; the 8M raw file is not a cheap pool
+
+- **Measured capacity:** ~14.5k deliverable now, ~97% Shopify Inbox (free datacenter path, throttled); Tidio ~420. Per-vendor tagged pools mapped (~94k drivable total, SI 73.5k dominating) + ~2.5k untapped qualified vendors (Richpanel/Freshchat/Zoho/Olark...). `research/pool-and-capacity.md`.
+- **The 8M "main file" (combined_domains.csv) is NOT a cheap pool.** It is domain+platform only (no chat tags); a fetch+detect feasibility test from Server #1 got 41% fetch / **1% chat-vendor density** (datacenter-IP blocks + JS-injected widgets miss a static fetch). So the pool grows by activating the StoreLeads-tagged 94k (verify Gorgias +6.2k, build untapped vendors, extract per-vendor lists), not by re-scanning the raw file. Depth beyond 94k = a richer StoreLeads export with the tag columns.
+- No code change this entry - analysis + direction (PENDING.md "Grow the pool FIRST").
+
+## 2026-06-29 - One-way pivot, double-send-safe SI verdict, Crisp shipped
 
 - **Strategy pivot to ONE-WAY delivery.** We only need to DELIVER the pitch; it now carries our website (mercwise.com) + booking link (cal.com/nikhil1/30min), so an interested merchant contacts us. We do NOT capture inbound replies. Consequences: the **residential proxy is HELD** (its only justification was scaling SI's hear-back path; SI rides the free datacenter path), and the **Reply Watcher matcher fix is DROPPED** (success = bookings, not inbox replies; the matcher over-counts brand-domain marketing mail). Clean composer vendors are now strictly better than SI (no captcha/proxy), so priority is breadth across them.
 - **Pitch rewritten** (`pitches.py`): dropped "Would you be interested?", the signature and the price anchor; ends "Here's my website: mercwise.com and here's my calendar: <cal>". Plain, no jargon, under 75 words, A/B variant keys differ.

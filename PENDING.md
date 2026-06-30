@@ -8,7 +8,27 @@ So: the **residential proxy is HELD**, the **Reply Watcher matcher fix is DROPPE
 **breadth across the clean composer vendors** (no captcha, no proxy), with Shopify Inbox on the free
 datacenter path as bonus volume.
 
-## Next up
+## Grow the pool FIRST (2026-06-30) - pool is the capacity ceiling
+
+Measured capacity now ~14.5k deliverable (~97% Shopify Inbox, free datacenter path, throttled). Each
+store gets ONE pitch, so the POOL is the ceiling. Per-vendor pools + receipts:
+`research/pool-and-capacity.md` (or memory `reference_chat_outreach_pool_and_capacity`).
+- **The 8M "main file" (combined_domains.csv) is NOT a cheap pool.** It is domain+platform only (no
+  chat tags); a fetch+detect feasibility test from Server #1 got 41% fetch / **1% chat-vendor density**
+  (datacenter IP blocks + JS-injected widgets miss static fetch). Don't re-scan it; StoreLeads tags
+  already did the JS-render detection.
+- **Activate the tagged ~94k (the real near-term growth):**
+  - **Verify Gorgias** (+6,220) - already tagged AND wired (ApiSendDriver), just never delivery-
+    confirmed, so those 6.2k are currently unusable. One verification send flips them on. Biggest
+    pool-per-effort win after SI.
+  - **Build the untapped drivable+qualified vendors** (~2.5k): Richpanel 578, Freshchat 528, Freshdesk
+    447, Zoho SalesIQ 268, Kustomer 245, Olark 218, Gladly 196 - spike -> VendorConfig -> verify-to-
+    composer, same as Crisp. (Exclude already-AI tags: ChatBot, Gobot, ManyChat, Drift.)
+  - Extract qualified (no-AI) per-vendor lists from `domains_export.csv` so all 94k is drivable.
+- **Depth beyond 94k = a richer StoreLeads export** (WITH technologies/installed_apps columns - the 8M
+  file lacks them - and a mid-market revenue band). Nikhil pulls when back in StoreLeads.
+
+## Next up (after pool growth)
 
 - **Consolidated clean-vendor delivery batch (HITL, items 2+3 - APPROVED, not yet run).** One
   `batch_cli <list> --vendors tidio,tawk.to,zendesk,chatra,livechat,crisp --send` over a fresh
