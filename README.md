@@ -7,23 +7,28 @@ support, **never by switching to cold email** (ADR-0001).
 See `CONTEXT.md` for the glossary, `docs/adr/` for decisions, `CHANGELOG.md` for what changed,
 `PENDING.md` for what's open.
 
-## Status (2026-06-29)
+## Status (2026-06-30)
 
 **Model: ONE-WAY delivery.** We only need to DELIVER the pitch; it carries our website (mercwise.com) +
 booking link (cal.com/nikhil1/30min), so an interested merchant contacts us. We do NOT capture inbound
-replies. So scale = **breadth across the clean composer vendors** (no captcha, no proxy); the residential
-proxy is held and the reply-watcher matcher is off the critical path. Success = cal.com bookings.
+replies. Scale = **breadth across the clean composer vendors** + Shopify Inbox volume. Success = cal.com bookings.
 
 Engine works end-to-end. DOM-drive vendors are configs over a shared `WidgetDriver` (ADR-0007); two get
 their own class. **Real-send proven:** Tidio, Tawk, Shopify Inbox. **Verify-to-composer proven:** Zendesk
-(5/5), LiveChat, Chatra, HelpScout, **Crisp** (`$crisp` chat:open, page-DOM composer, 6/18). **API-send:**
-Gorgias, Intercom (wired). **Deferred:** Re:amaze (built but 0/15 - `popup()` opens a menu, composer behind
-an entry click, own spike), and the Shopify Inbox residential proxy. 156 tests green.
+(5/5), LiveChat, Chatra, HelpScout, **Crisp** (33%), **Olark** (`window.olark`, page-DOM textarea, **70%** -
+strongest), **Zoho SalesIQ** (about:blank-frame textarea, **45%**). **API-send:** Gorgias (now confirms by
+dom_echo via ApiSendDriver), Intercom (wired). **Dropped (not headless-drivable):** Re:amaze, Richpanel,
+Kustomer, Freshchat/Gladly/Freshdesk. 176 tests green.
 
-Shopify Inbox (count leader ~49k) is delivery-understood: its passive hCaptcha **silently rejects ~half
-the submissions from a datacenter IP** (not a visible challenge). The send verdict is now provably
-double-send-safe (a clicked send is always terminal; only a never-clicked-still-gated send retries). SI
-rides the free datacenter path as bonus volume.
+**Gorgias struck from the pool:** the StoreLeads "Gorgias" tag is a HELPDESK/contact-forms tag, not the
+chat widget - 0/140 random qualified stores expose `window.GorgiasChat` (re-qualify with
+`research/gorgias_chatlive.py` before pitching). The "+6,220" was illusory.
+
+**Shopify Inbox** (count leader): its passive hCaptcha **silently rejects ~half the submissions from a
+datacenter IP**. The send verdict is provably double-send-safe. The **residential proxy is now wired and
+confirmed** (ProxyBase, residential+rotating, opt-in via a gitignored Server #1 `.env.proxy`); measured SI
+cost is ~0.97 MB/store images-blocked (33 GiB prepaid balance, **card attached - cap and image-block at
+scale, never blanket-route the 73.5k**). Open: a HITL SI delivery A/B (proxy vs direct) to measure the lift.
 
 ## Where it's going
 

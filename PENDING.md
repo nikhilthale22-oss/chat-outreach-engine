@@ -62,9 +62,13 @@ store gets ONE pitch, so the POOL is the ceiling. Per-vendor pools + receipts:
   from a datacenter IP** (committed-delivery decayed 67% -> 48% with cumulative volume, 0 visible
   challenges). The verdict now treats a clicked send as always-terminal and only retries when nothing
   posted (provably double-send-safe). 20 wrongly-burned stores were reset to Queued.
-- **SI scaling is on the FREE datacenter path only** (proxy HELD). Revisit a residential proxy ONLY if
-  the clean vendors are tapped out and SI count becomes the binding constraint; an A/B (needs proxy
-  creds) would confirm whether IP reputation is the lever before any spend.
+- **Residential proxy WIRED (ProxyBase) 2026-06-30** - no longer held. Confirmed residential+rotating,
+  Chromium-auth OK, creds in a gitignored Server #1 `.env.proxy` (opt-in). Measured SI cost 0.97 MB/store
+  images-blocked (33 GiB prepaid ~= 34k store-loads; full 73.5k = ~71 GB > balance, card attached - cap +
+  image-block + monitor, never blanket-route). **NEXT (HITL): a small SI delivery A/B (proxy vs direct,
+  images-blocked, ~15-20 stores) Nikhil fires** to measure whether residential lifts submit-acceptance
+  above the 48-67% datacenter baseline. Prereq (autonomous): wire image/media blocking into the engine's
+  proxy path. See `reference_proxybase_residential_proxy` (memory).
 - **Still open:** widget-variant misses (`no_composer`/`no_launcher` selectors) - the only remaining
   adapter-robustness bucket, needs real-DOM evidence.
 
