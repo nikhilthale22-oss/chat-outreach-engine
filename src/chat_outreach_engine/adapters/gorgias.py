@@ -1,71 +1,45 @@
-"""GorgiasAdapter: the real Adapter for Gorgias chat widgets.
+"""GorgiasAdapter: Adapter for Gorgias chat (API-send, ADR-0007).
 
-Ports the proven send flow: open the site, wait for window.GorgiasChat, open it,
-capture the reply email at the gate, and send the Pitch. Playwright is imported
-lazily so the package imports without it in test environments.
+Gorgias transmits a visitor message via a JS call - window.GorgiasChat.sendMessage(text) - after
+capturing the visitor email at the gate (captureUserEmail). There is no composer to type into, so
+Gorgias is an ApiVendorConfig over ApiSendDriver, the same family as Intercom. This REPLACES the older
+hand-written class that returned an optimistic "pitch_sent" the moment sendMessage was called, with no
+proof the message posted; ApiSendDriver confirms by dom_echo_any (our Pitch token must render in the
+Messenger) and so returns "delivered" / "no_delivery_confirmation" honestly.
+
+CRITICAL COVERAGE NOTE (measured 2026-06-30, research/gorgias-chat-verification.md): the StoreLeads
+"Gorgias" tag flags the Gorgias HELPDESK / contact-forms PLATFORM, not the on-site chat widget. Most
+tagged stores expose only window.GorgiasBridge (the bundle-loader, used for email/contact forms) and
+have the live CHAT widget OFF - they never expose window.GorgiasChat, so this adapter correctly
+returns no_gorgias_chat. The drivable chat pool is the CHAT-LIVE subset, far smaller than the tag count.
+Re-qualify a Gorgias list with research/gorgias_chatlive.py before pitching.
+
+STATUS: send path migrated to the confirming driver but NOT yet proven by a real send (HITL).
 """
 from __future__ import annotations
 
-import json
-import os
-import time
-
+from ..api_send_driver import ApiSendDriver, ApiVendorConfig
 from ..injector import SendResult
-from ..proxy import playwright_proxy
+
+GORGIAS = ApiVendorConfig(
+    vendor="gorgias",
+    ready_predicate="window.GorgiasChat",
+    ready_fallback_predicate="window.GorgiasChat",
+    ready_timeout_ms=20000,
+    not_ready_detail="no_gorgias_chat",
+    # init() boots the chat bundle, open() shows it; fired sync (we cannot await in open_js), the
+    # driver's post-open settle covers the boot before the send.
+    open_js=("try{var _r=window.GorgiasChat.init&&window.GorgiasChat.init();}catch(_){}"
+             ";try{window.GorgiasChat.open&&window.GorgiasChat.open();}catch(_){}"),
+    # capture the reply email at the gate, then transmit; m=Pitch, e=reply email.
+    send_js=("try{window.GorgiasChat.captureUserEmail&&window.GorgiasChat.captureUserEmail(e);}catch(_){}"
+             ";window.GorgiasChat.sendMessage(m)"),
+    confirm_strategy="dom_echo_any",
+)
 
 
 class GorgiasAdapter:
     vendor = "gorgias"
 
     def send(self, domain: str, pitch: str, reply_email: str) -> SendResult:
-        from playwright.sync_api import sync_playwright
-
-        url = "https://" + domain
-        with sync_playwright() as p:
-            channel = os.environ.get("BROWSER_CHANNEL", "chrome") or None
-            browser = p.chromium.launch(
-                headless=True, channel=channel,
-                args=["--disable-blink-features=AutomationControlled"],
-            )
-            page = browser.new_context(
-                viewport={"width": 1366, "height": 768}, locale="en-US",
-                proxy=playwright_proxy(),
-            ).new_page()
-            try:
-                page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                time.sleep(2)
-                ready = page.evaluate(
-                    """async () => {
-                        const t0 = Date.now();
-                        while (Date.now() - t0 < 15000) {
-                            if (window.GorgiasChat) return true;
-                            await new Promise(r => setTimeout(r, 300));
-                        }
-                        return false;
-                    }"""
-                )
-                if not ready:
-                    return SendResult(False, "no_gorgias")
-                page.evaluate(
-                    """async () => {
-                        try { const r = window.GorgiasChat.init && window.GorgiasChat.init();
-                              if (r && r.then) await r; } catch(_) {}
-                        try { window.GorgiasChat.open && window.GorgiasChat.open(); } catch(_) {}
-                    }"""
-                )
-                time.sleep(1.5)
-                page.evaluate(
-                    f"() => {{ try {{ window.GorgiasChat.captureUserEmail "
-                    f"&& window.GorgiasChat.captureUserEmail({json.dumps(reply_email)}); }} catch(_) {{}} }}"
-                )
-                time.sleep(1.5)
-                page.evaluate(f"() => window.GorgiasChat.sendMessage({json.dumps(pitch)})")
-                time.sleep(3)
-                return SendResult(True, "pitch_sent")
-            except Exception as e:
-                return SendResult(False, f"{type(e).__name__}: {str(e)[:160]}")
-            finally:
-                try:
-                    browser.close()
-                except Exception:
-                    pass
+        return ApiSendDriver(GORGIAS).send(domain, pitch, reply_email)
