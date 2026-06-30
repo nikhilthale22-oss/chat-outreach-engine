@@ -15,13 +15,17 @@ honest send path the verification needed. (6 tests; suite 176 green.)
 
 ## Finding 2: the "Gorgias" tag is a HELPDESK tag, not a chat-widget tag
 
-The drivable chat widget exposes `window.GorgiasChat`. A random-sample scan of the qualified
-Gorgias-tagged pool (`research/gorgias_chatlive.py`, waits up to 20s for `window.GorgiasChat`):
+The drivable chat widget exposes `window.GorgiasChat`. Random-sample scans of the qualified
+Gorgias-tagged pool (`research/gorgias_chatlive.py`, waits for `window.GorgiasChat`):
 
-- **CHAT-LIVE (window.GorgiasChat present): 0 / 50.**
+- **CHAT-LIVE (window.GorgiasChat present): 0 / 140** (a 50-store scan + a 90-store scan; a third 90
+  was running and only extends the denominator).
 - bridge-only (only `window.GorgiasBridge` - the Gorgias bundle-loader for email / contact-forms,
-  live chat OFF): 33 / 50.
-- no-gorgias (stale tag or bot-blocked): 16 / 50. error: 1 / 50.
+  live chat OFF): ~87 / 140 (62%).
+- no-gorgias (stale tag or bot-blocked): ~49 / 140 (35%). error: 4 / 140.
+
+0/140 puts the 95% upper bound on the chat-live rate at ~2.6%, i.e. AT MOST a couple hundred across
+the full 6,220 and realistically near zero.
 
 Diagnostic (`research/gorgias_diag.py`) confirmed the mechanism: tagged stores load
 `config.gorgias.chat/bundle-loader/...` + `config.gorgias.help/.../replace-mailto-script.js` and expose
@@ -30,10 +34,9 @@ forms; the on-site chat widget is configured off. The StoreLeads "Gorgias" tag f
 platform, which over-counts the chat-widget subset massively.
 
 **Implication:** the +6,220 was not 6,220 chat stores. The drivable Gorgias-CHAT pool is the chat-live
-subset, ~0% of a 50-store random sample (so at best a low-single-digit % of the tag, a few hundred
-across the full pool, found only by scanning thousands). Gorgias is NOT the "biggest cheap win" the
-capacity map assumed. A larger parallel scan (180) is running to tighten the rate and surface the
-chat-live minority, if any, for a single send-path proof.
+subset, ~0% of 140 random stores. Gorgias is NOT the "biggest cheap win" the capacity map assumed -
+strike it. There was no chat-live store in-sample to fire a send-path proof at; firing at a bridge-only
+store correctly returns `no_gorgias_chat`.
 
 ## What this means for the engine
 

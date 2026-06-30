@@ -18,9 +18,12 @@ store gets ONE pitch, so the POOL is the ceiling. Per-vendor pools + receipts:
   (datacenter IP blocks + JS-injected widgets miss static fetch). Don't re-scan it; StoreLeads tags
   already did the JS-render detection.
 - **Activate the tagged ~94k (the real near-term growth):**
-  - **Verify Gorgias** (+6,220) - already tagged AND wired (ApiSendDriver), just never delivery-
-    confirmed, so those 6.2k are currently unusable. One verification send flips them on. Biggest
-    pool-per-effort win after SI.
+  - ~~**Verify Gorgias** (+6,220)~~ **DONE 2026-06-30 - STRUCK.** The StoreLeads "Gorgias" tag is a
+    HELPDESK/contact-forms platform tag, NOT the chat widget. 0/140 random qualified stores expose
+    `window.GorgiasChat` (62% bridge-only = Gorgias email with chat OFF, 35% stale). The drivable
+    Gorgias-CHAT pool is ~0%; the +6,220 was illusory. Adapter still hardened (migrated to
+    ApiSendDriver, now confirms by dom_echo not optimistic "pitch_sent"); re-qualify any Gorgias list
+    with `research/gorgias_chatlive.py` before pitching. `research/gorgias-chat-verification.md`.
   - **Untapped vendors - spiked 2026-06-30** (`research/widget-vendor-spike.md`):
     - **Olark SHIPPED** (verify-to-composer 70%) and **Zoho SalesIQ SHIPPED** (35%). Both in the
       engine + registered; per-vendor qualified lists extracted from `domains_export.csv`.

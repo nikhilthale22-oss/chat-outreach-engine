@@ -1,6 +1,11 @@
 # Changelog
 
-## 2026-06-30 (latest) - Untapped-vendor spike: Olark + Zoho SalesIQ shipped
+## 2026-06-30 (latest) - Gorgias verification: pool struck, adapter hardened
+
+- **The +6,220 Gorgias pool is illusory.** The StoreLeads "Gorgias" tag flags the Gorgias HELPDESK / contact-forms PLATFORM, not the on-site chat widget the adapter drives. Random-sample scans (`research/gorgias_chatlive.py`): **0 / 140** qualified Gorgias stores expose `window.GorgiasChat`; ~62% are bridge-only (only `window.GorgiasBridge`, the bundle-loader for email/contact-forms, chat OFF), ~35% stale. Diagnostic (`research/gorgias_diag.py`) confirmed: tagged stores load `config.gorgias.help/.../replace-mailto-script.js` + the chat bundle-loader and expose `GorgiasBridge`, never `GorgiasChat`. The drivable Gorgias-CHAT pool is ~0%, not 6,220 - struck from the capacity math. `research/gorgias-chat-verification.md`.
+- **Adapter hardened regardless** (`adapters/gorgias.py`): replaced the hand-written class that returned an optimistic `"pitch_sent"` the instant `sendMessage()` was called (no proof it posted) with an `ApiVendorConfig` over **ApiSendDriver** (same family as Intercom) - captures the email, sends, then confirms by `dom_echo_any` (`delivered` / `no_delivery_confirmation`). Ready predicate is `window.GorgiasChat` (helpdesk-only stores correctly fail as `no_gorgias_chat`). +6 tests, **176 green**. Always re-qualify a Gorgias list with `gorgias_chatlive.py` before pitching.
+
+## 2026-06-30 - Untapped-vendor spike: Olark + Zoho SalesIQ shipped
 
 - **Two new drivable vendors, both measured on the production path** (`research/widget-vendor-spike.md`). Extracted column-aware per-vendor qualified (no-AI) lists from `domains_export.csv` (it has `technologies`/`installed_apps_names`/`tags`), then spiked each candidate on live stores (`research/widget_discover_v2.py`, `widget_reprobe.py`) and verified to-composer on a random 20 (`research/verify_vendor.py`, `WidgetDriver.send(dry_run=True)` - transmits nothing).
 - **Olark - SHIPPED** (`adapters/olark.py`): `window.olark`, open `olark('api.box.expand')`, composer is a page-DOM `textarea[id^='olark-custom-element']` (no iframe; the name/email inputs are inline, not a gate), `email_strategy=none`, dom_echo. **Verify-to-composer 14/20 (70%)** - the strongest new vendor (misses: 4 stale `no_olark_api`, 2 pre-chat-gated `no_composer`).
