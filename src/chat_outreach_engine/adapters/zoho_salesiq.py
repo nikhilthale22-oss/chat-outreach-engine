@@ -9,8 +9,11 @@ Zoho SalesIQ is DOM-drive (a VendorConfig over WidgetDriver, ADR-0007), establis
 - Zoho renders its chat UI in an iframe WITH NO STABLE URL (an `about:blank` frame), so the composer
   cannot be reached page-level. The driver resolves that frame by an in-frame content marker
   (widget_frame_marker) and scopes the composer to it - the same about:blank-frame mechanism the
-  engine already uses for Tawk. The composer is <textarea id="msgarea"> ("Type your message and hit
-  'Enter'").
+  engine already uses for Tawk. The composer is the frame's <textarea>: its id is "msgarea" on some
+  skins but ABSENT on many, and its placeholder varies by skin ("Type your message...", "hit 'Start
+  Chat'", "We are here to help you", "click 'Submit'"). So we match the frame's textarea GENERICALLY
+  rather than by id/placeholder - an early too-specific selector (textarea#msgarea / message-placeholder)
+  missed the id-less skins and read as no_composer, halving reach (35% -> measured higher once broadened).
 - One-way model: email_strategy="none" (we do not rely on an inbound reply). Confirm via dom_echo:
   the sent message echoes into the transcript and the composer clears.
 - Coverage caveat: the static "zoho-salesiq" tech tag over-counts; only stores whose $zoho.salesiq SDK
@@ -21,9 +24,10 @@ from __future__ import annotations
 from ..injector import SendResult
 from ..widget_driver import VendorConfig, WidgetDriver
 
-# The message box is <textarea id="msgarea">; some skins drop the id, so we also accept a message-
-# placeholder textarea. This doubles as the in-frame marker that resolves Zoho's about:blank frame.
-_COMPOSER = "textarea#msgarea, textarea[placeholder*='message' i]"
+# The message box is the Zoho chat frame's <textarea> (id "msgarea" on some skins, absent on many;
+# placeholder varies). Zoho's about:blank chat frame is the only widget frame carrying a textarea, so
+# matching the textarea generically both resolves that frame (widget_frame_marker) and finds the box.
+_COMPOSER = "textarea"
 
 ZOHO_SALESIQ = VendorConfig(
     vendor="zoho-salesiq",

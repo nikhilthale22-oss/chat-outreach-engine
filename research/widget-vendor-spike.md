@@ -16,12 +16,27 @@ to spike + verify. Harnesses: `research/widget_discover_v2.py`, `research/widget
 | vendor | SDK global | open verb | composer | verify-to-composer | verdict |
 |---|---|---|---|---|---|
 | **Olark** | `window.olark` | `olark('api.box.expand')` | page DOM `textarea[id^='olark-custom-element']` | **14/20 (70%)** | **SHIPPED** |
-| **Zoho SalesIQ** | `window.$zoho.salesiq` | `$zoho.salesiq.floatwindow.visible('show')` + `chat.start()` | `textarea#msgarea` in an `about:blank` frame | **7/20 (35%)** | **SHIPPED** |
-| Kustomer | `window.Kustomer` (live) | `Kustomer.open()` | none surfaced | 0 (no composer iframe mounts headless) | DEFER - launcher-click spike |
-| Richpanel | `window.Richpanel` (live) | `Richpanel('open')` and variants | none surfaced | 0 (widget iframe never injects) | DEFER - launcher-click spike |
+| **Zoho SalesIQ** | `window.$zoho.salesiq` | `$zoho.salesiq.floatwindow.visible('show')` + `chat.start()` | any `textarea` in an `about:blank` frame | **9/20 (45%)** after selector fix (was 35%) | **SHIPPED** |
+| Kustomer | `window.Kustomer` (live) | `Kustomer.open()` | none surfaced (launcher-click 1/6 = a misclick to an AI bot) | ~0 | DROP - no headless-drivable composer |
+| Richpanel | `window.Richpanel` (live) | `Richpanel('open')` and variants | none surfaced even with launcher-click (0/6) | 0 | DROP - no headless-drivable composer |
+| Re:amaze | `window.Reamaze` | `Reamaze.popup()` | composer behind a menu entry in an about:blank frame | 0/8 (popup opens no detectable menu frame headless; ~3/8 stale) | DROP - menu does not render headless |
 | Freshchat | `window.fcWidget` | `fcWidget.open()` | n/a | global absent across sample | DROP - tags stale |
 | Gladly | `window.Gladly` | `gladlyChat.show()` | none | global mostly absent | DROP - stale + enterprise |
 | Freshdesk | `window.FreshworksWidget` | `FreshworksWidget('open')` | n/a (ticket form, not chat) | not pursued | DROP |
+
+**Widening round 2 (launcher-click spike, 2026-06-30).** Built a generic launcher-click discovery
+(`research/launcher_discover.py`): if a JS `open()` surfaces no composer, find + click the floating
+launcher (bottom-right / chat-ish, in page or any frame), re-scan all frames. Result: it did NOT
+unlock Kustomer (1/6, and that 1 was a cookie-banner misclick that landed on an unrelated "Ask AI
+anything" bot) or Richpanel (0/6 - globals live on ~all stores, but no composer mounts headless even
+after a click). Re:amaze (`research/reamaze_probe.py`): `popup()` opens no detectable menu frame
+headless (the probe caught only unrelated frames - a Loox reviews carousel, a privacy notice), ~3/8
+stale. **Verdict: among the StoreLeads-tagged untapped vendors, only Olark and Zoho are headless-
+drivable; Richpanel/Kustomer/Re:amaze do not surface a composer in a headless browser and are dropped.**
+The **Zoho lift** came from the spike though: the generic textarea scan reached 8/12, exposing that the
+config's `textarea#msgarea, textarea[placeholder*='message']` selector missed the id-less / varied-
+placeholder skins (and, being the frame marker too, failed to resolve the about:blank frame). Broadened
+to any `textarea` -> 35% to 45% on the same sample.
 
 ## Detail
 

@@ -25,14 +25,17 @@ store gets ONE pitch, so the POOL is the ceiling. Per-vendor pools + receipts:
     ApiSendDriver, now confirms by dom_echo not optimistic "pitch_sent"); re-qualify any Gorgias list
     with `research/gorgias_chatlive.py` before pitching. `research/gorgias-chat-verification.md`.
   - **Untapped vendors - spiked 2026-06-30** (`research/widget-vendor-spike.md`):
-    - **Olark SHIPPED** (verify-to-composer 70%) and **Zoho SalesIQ SHIPPED** (35%). Both in the
-      engine + registered; per-vendor qualified lists extracted from `domains_export.csv`.
-    - **Kustomer + Richpanel = DEFER** - globals live on real installs but no composer iframe mounts
-      from a headless JS `open()`; they need a launcher-click spike (own task, uncertain yield).
+    - **Olark SHIPPED** (verify-to-composer 70%) and **Zoho SalesIQ SHIPPED** (45%, lifted from 35%
+      by broadening the composer selector to any textarea in Zoho's chat frame). Both in the engine +
+      registered; per-vendor qualified lists extracted from `domains_export.csv`.
+    - **Kustomer + Richpanel + Re:amaze = DROPPED 2026-06-30 (round 2).** A generic launcher-click
+      spike did not unlock them: Richpanel 0/6, Kustomer 1/6 (a misclick), Re:amaze popup() opens no
+      detectable menu frame headless. Globals are live (Richpanel/Kustomer) but no composer mounts in
+      a headless browser. Only Olark + Zoho are headless-drivable among the untapped tags.
     - **Freshchat / Gladly / Freshdesk = DROP** - tags stale in the sample (globals absent); revisit
       only if a fresher tagged list shows them live.
-    - **Zoho lift (optional):** 9/20 misses were `no_composer` = Zoho gating behind a pre-chat/entry
-      step; an entry-click-before-composer spike would raise the 35%.
+    - Remaining Zoho ceiling: ~7/20 stores gate behind a pre-chat/offline form (no textarea surfaces)
+      - not worth more spike.
   - Extract qualified (no-AI) per-vendor lists for the MAIN vendors (SI/Tidio/Zendesk/...) from
     `domains_export.csv` so all 94k is drivable for the consolidated send batch (still to do).
 - **Depth beyond 94k = a richer StoreLeads export** (WITH technologies/installed_apps columns - the 8M

@@ -36,9 +36,10 @@ def test_config_resolves_an_about_blank_frame_by_content_marker():
     assert ZOHO_SALESIQ.widget_frame_marker == ZOHO_SALESIQ.composer_selector
 
 
-def test_composer_targets_the_message_textarea():
-    assert "msgarea" in ZOHO_SALESIQ.composer_selector
-    assert "textarea" in ZOHO_SALESIQ.composer_selector
+def test_composer_matches_the_textarea_generically_not_by_id_or_placeholder():
+    # Zoho's composer id ("msgarea") and placeholder vary by skin and are absent on many stores;
+    # matching the frame's textarea generically is what lifts reach above the id/placeholder selector
+    assert ZOHO_SALESIQ.composer_selector == "textarea"
 
 
 def test_config_no_email_gate_and_dom_echo_confirm():
