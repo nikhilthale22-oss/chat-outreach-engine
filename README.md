@@ -9,9 +9,11 @@ See `CONTEXT.md` for the glossary, `docs/adr/` for decisions, `CHANGELOG.md` for
 
 ## Status (2026-06-30)
 
-**Model: ONE-WAY delivery.** We only need to DELIVER the pitch; it carries our website (mercwise.com) +
-booking link (cal.com/nikhil1/30min), so an interested merchant contacts us. We do NOT capture inbound
-replies. Scale = **breadth across the clean composer vendors** + Shopify Inbox volume. Success = cal.com bookings.
+**Model: ONE-WAY delivery, and the STORE is the unit - reach it through ANY door.** We only need to
+DELIVER the pitch (it carries mercwise.com + cal.com/nikhil1/30min, so an interested merchant contacts
+us; no reply capture). Two doors, equal, neither sidelined: the **chat widget** and the store's native
+**contact form**. Per store: chat-first, form-fallback, one pitch (the Ledger enforces one). Success =
+cal.com bookings. **Current focus: make money on the free channels first, then decide what to scale.**
 
 Engine works end-to-end. DOM-drive vendors are configs over a shared `WidgetDriver` (ADR-0007); two get
 their own class. **Real-send proven:** Tidio, Tawk, Shopify Inbox. **Verify-to-composer proven:** Zendesk
@@ -24,11 +26,21 @@ Kustomer, Freshchat/Gladly/Freshdesk. 176 tests green.
 chat widget - 0/140 random qualified stores expose `window.GorgiasChat` (re-qualify with
 `research/gorgias_chatlive.py` before pitching). The "+6,220" was illusory.
 
-**Shopify Inbox** (count leader): its passive hCaptcha **silently rejects ~half the submissions from a
-datacenter IP**. The send verdict is provably double-send-safe. The **residential proxy is now wired and
-confirmed** (ProxyBase, residential+rotating, opt-in via a gitignored Server #1 `.env.proxy`); measured SI
-cost is ~0.97 MB/store images-blocked (33 GiB prepaid balance, **card attached - cap and image-block at
-scale, never blanket-route the 73.5k**). Open: a HITL SI delivery A/B (proxy vs direct) to measure the lift.
+**Contact form** (`adapters/shopify_contact_form.py`, the second door): the store's native Shopify form,
+posts through their own site into their support inbox (sidesteps our email deliverability problem) and is
+the door most likely to be READ (a chat bubble can sit unseen). BUT it is gated by an INTERACTIVE hCaptcha
+that neither the proxy nor a headed browser beats (0/8); paid solver ruled out. So we deliver the
+**captcha-free subset only (~6% of Shopify stores)** and skip the rest. It is the highest-quality, smallest
+free slice.
+
+**Shopify Inbox** (count leader): its PASSIVE hCaptcha **silently rejects ~half the submissions from a
+datacenter IP** (softer than the contact form's). Verdict is double-send-safe. The **residential proxy is
+wired** (ProxyBase, residential+rotating, opt-in via a gitignored Server #1 `.env.proxy`); SI cost ~0.97
+MB/store images-blocked (33 GiB prepaid, card attached - cap + image-block, never blanket-route). NOTE:
+the proxy lifts LOADING/reach, but does NOT beat Shopify's hCaptcha.
+
+**Next: prove conversion (0 bookings so far).** A real HITL send batch on the free channels (SI + clean
+vendors + captcha-free contact forms) to get the first booking, then decide what is worth scaling.
 
 ## Where it's going
 
