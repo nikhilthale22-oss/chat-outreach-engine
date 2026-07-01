@@ -18,6 +18,7 @@ from .adapters import (
     LiveChatAdapter,
     OlarkAdapter,
     ReamazeAdapter,
+    ShopifyContactFormAdapter,
     ShopifyInboxAdapter,
     TawkAdapter,
     TidioAdapter,
@@ -45,7 +46,7 @@ def main(argv=None) -> None:
     domain = args.domain.strip()
     ledger = Ledger(args.db)
     injector = Injector(ledger, SignatureDetector(),
-                        {"gorgias": GorgiasAdapter(), "shopify-inbox": ShopifyInboxAdapter(),
+                        {"gorgias": GorgiasAdapter(), "shopify-inbox": ShopifyInboxAdapter(), "shopify-contact-form": ShopifyContactFormAdapter(),
                          "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
                          "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(),
                          "intercom": IntercomAdapter(), "helpscout": HelpScoutAdapter(),

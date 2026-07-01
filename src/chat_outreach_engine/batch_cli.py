@@ -24,6 +24,7 @@ from .adapters import (
     LiveChatAdapter,
     OlarkAdapter,
     ReamazeAdapter,
+    ShopifyContactFormAdapter,
     ShopifyInboxAdapter,
     TawkAdapter,
     TidioAdapter,
@@ -78,7 +79,7 @@ def main(argv=None) -> None:
     available = {"gorgias": GorgiasAdapter(), "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
                  "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(), "intercom": IntercomAdapter(),
                  "helpscout": HelpScoutAdapter(), "zendesk": ZendeskAdapter(),
-                 "shopify-inbox": ShopifyInboxAdapter(), "crisp": CrispAdapter(),
+                 "shopify-inbox": ShopifyInboxAdapter(), "shopify-contact-form": ShopifyContactFormAdapter(), "crisp": CrispAdapter(),
                  "reamaze": ReamazeAdapter(), "olark": OlarkAdapter(),
                  "zoho-salesiq": ZohoSalesIQAdapter()}
     enabled = {v.strip() for v in args.vendors.split(",") if v.strip()}
