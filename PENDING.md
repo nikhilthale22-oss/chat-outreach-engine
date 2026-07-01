@@ -41,6 +41,21 @@ store gets ONE pitch, so the POOL is the ceiling. Per-vendor pools + receipts:
 - **Depth beyond 94k = a richer StoreLeads export** (WITH technologies/installed_apps columns - the 8M
   file lacks them - and a mid-market revenue band). Nikhil pulls when back in StoreLeads.
 
+## MAKE MONEY FIRST (2026-06-30, Nikhil) - prove conversion before scaling
+
+Zero bookings so far. The open question is whether the pitch CONVERTS, not delivery breadth. So the
+next real move is a **real send batch on the FREE channels** (HITL, Nikhil fires) to get the first
+booking, then decide what to scale:
+- Free channels: Shopify Inbox (~50% delivery, passive hCaptcha) + Olark/Zoho/Tidio/Tawk/Zendesk/
+  Chatra/LiveChat/Crisp + captcha-free contact forms.
+- **Contact form = second door, FREE SUBSET ONLY.** Built (`adapters/shopify_contact_form.py`), but
+  most Shopify contact forms have an INTERACTIVE hCaptcha that neither proxy nor headed-browser beats
+  (0/8); paid solver RULED OUT. Adapter skips captcha-gated stores, delivers the captcha-free subset.
+- Routing rule: **chat-first, form-fallback, one pitch per store** (ledger enforces one). Wire the
+  Injector so "no drivable chat" falls through to the contact form instead of Dead; reactivate the
+  stores wrongly marked Dead (the 6,220 Gorgias helpdesk + other no-chat deads that have a form).
+- Paid captcha solver / scaling contact forms = DEFERRED until the pitch is proven to make money.
+
 ## Next up (after pool growth)
 
 - **Consolidated clean-vendor delivery batch (HITL, items 2+3 - APPROVED, not yet run).** One

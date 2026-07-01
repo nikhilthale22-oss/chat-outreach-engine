@@ -1,6 +1,12 @@
 # Changelog
 
-## 2026-06-30 (latest) - Residential proxy (ProxyBase) verified + wired for Shopify Inbox
+## 2026-06-30 (latest) - Contact form = second delivery door (built, free-subset only)
+
+- **New channel: the store's native Shopify contact form** (`adapters/shopify_contact_form.py`), a delivery door equal to the chat widget, per Nikhil's "the store is the unit; reach it through any door, chat-first then form, one pitch per store." It posts through the store's own site into their support inbox, so it sidesteps our email deliverability problem entirely. Almost every Shopify store has one, so the addressable pool is far bigger than the ~94k chat-tagged. Fields are theme-robust (classify by ROLE: textarea=message, email input=email, name-ish input=name); confirm by Shopify's `?contact_posted=true` / thank-you signal.
+- **CAPTCHA REALITY (measured, `research/measure_contact_headed.py`): the contact form is gated by an INTERACTIVE hCaptcha** (invisible at load, must-solve "pick the images" on submit), stricter than Shopify Inbox's passive hCaptcha. Neither the residential proxy (IP) nor a headed browser via xvfb (fingerprint) bypasses it: **0/8 passed both headless and headed**. Only a paid solver would, which Nikhil ruled out ("not paying $3/1000"). So the adapter delivers the **free (no-captcha) subset only**: on submit it detects the visible challenge and returns `captcha_challenge` to SKIP the store (never solve, never pay). +9 tests, **185 green**.
+- **Direction (Nikhil): make money on this channel first, then decide whether to scale.** We have zero bookings yet, so the open question is conversion, not delivery breadth. Next = a real send batch on the FREE channels (Shopify Inbox ~50% + Olark/Zoho/Tidio/clean vendors + captcha-free contact forms) to get the first booking.
+
+## 2026-06-30 - Residential proxy (ProxyBase) verified + wired for Shopify Inbox
 
 - **The residential proxy is ProxyBase** (proxybase.org), not the "Proxycurl" it was misremembered as (Proxycurl is a LinkedIn data API, not a traffic proxy). Identified, then confirmed working end to end from Server #1: residential + **rotating** (three different residential IPs, AS701 Verizon etc.), and **Chromium honors the proxy auth** via the engine's `playwright_proxy()` (the real integration risk - passed). Use the HTTP endpoint `proxy.proxybase.org:1081`.
 - **Wired opt-in.** Creds live in a gitignored, chmod-600 `.env.proxy` on Server #1 only (never in the repo). A run uses the proxy only if it sources that file first, so nothing burns the prepaid balance by accident.
