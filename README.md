@@ -1,115 +1,103 @@
-**Status (2026-08-20):** moved here 2026-08-20 from `50k-day-sending-machine`. Browser-driven chat-widget delivery, 219 tests, 8 vendors proven. The machine that actually SENDS runs from a June rsync snapshot on boxes b2/b3, NOT from this checkout - `git pull` there does nothing. Last local change 2026-07-19. Per the 08-11 note, the constraint is offer-fit, not volume.
+**Status (2026-09-04):** engine library, 251 tests, 15 vendor adapters. The production
+orchestrator that runs it lives on the servers, not here. See [docs/PRODUCTION.md](docs/PRODUCTION.md).
+Sending was stopped on 2026-09-04 because the queue ran dry; delivery rate had fallen from
+about 25 percent to about 5 percent over the previous week. That is the problem this repo
+was made public to get help with.
 
-# 50k-day-sending-machine
+# chat-outreach-engine
 
-Reaches ecommerce brands at volume by dropping a pitch inside their **own live chat widget**
-(renamed from `chat-outreach-engine` 2026-07-17; importable package is still `chat_outreach_engine`,
-git remote still `nikhilthale22-oss/chat-outreach-engine`). Volume grows by adding per-vendor
-support, **never by switching to cold email** (ADR-0001). Blueprint: `PLAN.md`.
+Reaches ecommerce brands by dropping a short pitch inside the live chat widget already
+installed on their own website. Tidio, Tawk, Gorgias, Chatra and so on. Never cold email
+(ADR-0001). One machine, the same steps on every store, with a small per-vendor adapter
+that knows how to drive that vendor's widget.
 
-See `CONTEXT.md` for the glossary, `docs/adr/` for decisions, `CHANGELOG.md` for what changed,
-`PENDING.md` for what's open.
+## If you are new, read in this order
 
-## Status (2026-07-18)
+1. This file, then [CONTEXT.md](CONTEXT.md). CONTEXT is the glossary. The code and docs
+   use its words strictly: Brand, Pitch, Adapter, Widget Driver, Ledger, Stage.
+2. [docs/PRODUCTION.md](docs/PRODUCTION.md). What actually runs, on which box, and which
+   files are not in this repo. Read this before forming a theory about production.
+3. [docs/notes/2026-09-01-bug-analysis.md](docs/notes/2026-09-01-bug-analysis.md) and
+   [docs/notes/2026-09-04-state.md](docs/notes/2026-09-04-state.md). The evidence of the
+   current problem, with the queries that produced every number.
+4. [docs/adr/](docs/adr/). Eight decisions and why. ADR-0007 and ADR-0008 explain the shape
+   of the code.
+5. [PENDING.md](PENDING.md) for open items, [CHANGELOG.md](CHANGELOG.md) for what changed
+   and when, [docs/STATUS-LOG.md](docs/STATUS-LOG.md) for the dated history that used to
+   live at the top of this file.
 
-**Phase 3 Send: the machine delivers, and it's proven live through the code.** `pipeline.py` is the
-one-unit `detect -> route -> send` (`Pipeline.run_one`); `send/headed/` is the canonical adapter registry;
-the router is all-headed. **5 vendors proven live, headless on Server #1, with screenshots + code
-confirmation** (`~/Claude Code/*-sent.png`): **Tawk, Tidio, Chatra, LiveChat, Help Scout** = ~86% of the
-reachable pool. Built a `contact_form` + `composer_intro` capability for the form-gated vendors, and those
-three **capture the email so replies reach Nikhil's Zoho** (proof criterion 2, finally reachable). 219 green.
-Next: fold `batch.py` onto the unit, prove the smaller vendors (Crisp/Olark/Zoho), then Phase 4 scale.
+## How it works
 
-## Status (2026-07-17)
+```
+domain
+  |
+  v  detect/     fetch the homepage, match it against 62 vendor signatures -> vendor or none
+  |
+  v  route/      vendor -> send method, or a first-class skip (no widget, gated, unsupported)
+  |
+  v  send/       open a real Chromium, load the store, open the widget, reach the composer,
+  |              type the pitch, pass any email gate, confirm delivery was observed
+  v
+ledger.py       every domain, its Stage, vendor, variant and outcome; never pitch twice
+```
 
-**Renamed + reshaped into a phase pipeline, plus a hard reality check.** The tool is now
-`50k-day-sending-machine`, reshaped into `detect/ route/ send/ scale/ capture/ ops/` (PLAN.md). **First
-real delivery proof landed:** Nikhil sent a pitch into Emerald Fine Jewelry's live Tawk chat by hand
-(screenshot; Zoho reply pending). **Shopify Inbox is now sign-in GATED** (13/13 stores
-`require_buyer_shop_sign_in=True`), so the 2026-07-16 browserless crack is dead. Strategy locked
-(ADR-0008): **gated = skip, pure volume, drop the API path, all-headed** (0 API vendors proven; the only
-real path is browser-driving the human live-chat widgets). **Phase 1 Detect + Phase 2 Route built and
-tested, 211 green**, validated on real stores (human -> send, gated Shopify -> skip). Next: size the
-reachable pool from the 8M DB, then Phase 3 Send (prove one headed vendor end to end through the code).
+`pipeline.py` is that unit for one store. `batch.py` runs it concurrently over a list.
+`widget_driver.py` is the shared engine for every DOM-driven vendor; a vendor is a config
+over it, not a class (ADR-0007). `api_send_driver.py` is the same idea for vendors that
+expose a JavaScript send call. `reply_watcher.py` watches one inbox for replies, since every
+vendor emails the address left at the gate (ADR-0002).
 
-## Status (2026-07-16)
+## Folder map
 
-**Shopify Inbox delivery reverse-engineered into a browserless pure-HTTP send** (memory `reference_shopify_inbox_direct_send`): grab the store's `data-external-identifier` from its homepage, mint an invisible-hCaptcha token standalone (sitekey cc6e6e86, ~1.6s, no solver, origin+shop-agnostic), `POST create-conversation` -> 201. Storefronts block datacenter IPs (harvest needs a good IP) but the send backend does not. Architecture = token-factory + HTTP-sender-pool = 50k/day on one box. **CRITICAL: all verified in terminal only; Nikhil rejects terminal as proof** (memory `feedback_proven_only_when_user_sees_it`) and wants a real-brand batch with SCREENSHOTS + replies to his Zoho. Full replan: chat-widget only for now (contact form = the universal door but deferred), always-on machine, burnable identities + rotating IPs, own captcha solver later. Diversified 300 ready (`/tmp/chat300.csv`). **Next: the proof batch, BLOCKED on his GO to send to real brands.** See `PENDING.md`.
+| path | what |
+|---|---|
+| `src/chat_outreach_engine/detect/` | vendor signatures and the detector |
+| `src/chat_outreach_engine/route/` | registry of vendor to method, and the router |
+| `src/chat_outreach_engine/adapters/` | one file per vendor: the config or class that drives its widget |
+| `src/chat_outreach_engine/widget_driver.py` | the shared browser driver, 1,200 lines, most of the engine |
+| `src/chat_outreach_engine/pipeline.py`, `batch.py` | the per-store unit and the concurrent runner |
+| `src/chat_outreach_engine/ledger.py` | SQLite record of every brand and outcome |
+| `src/chat_outreach_engine/reply_watcher*.py` | IMAP reply capture |
+| `src/chat_outreach_engine/cli.py`, `batch_cli.py` | command line entry points |
+| `send/`, `scale/`, `capture/`, `ops/` | phase folders from PLAN.md; `send/headed/` holds the adapter registry, the rest are placeholders |
+| `tests/` | 251 unit tests (250 pass, 1 skipped), offline, using fixtures in `tests/fixtures/` |
+| `research/` | the spike scripts and findings per vendor. Frozen history. Many read server paths and will not run locally |
+| `docs/adr/` | decisions |
+| `docs/notes/` | dated evidence of production state |
+| `PLAN.md` | the blueprint the phase folders follow |
+| `CLAUDE.md`, `.ralphy/` | rules for the AI coding tools Nikhil builds with. Safe to ignore |
 
-## Status (2026-07-15, pt2)
+## Running it locally
 
-**PIVOT: the channel now pitches FLOWS, not chatbots** (Shopify's free AI assistant commoditized the standalone bot). Per brand we generate a bespoke flow-demo page (the existing `conversion-engine`) and inject its link into the Shopify Inbox message. Pool = **49,162 tagged SI brands**; ~62% build a page (72% full colour+logo). Shipped **retry-on-429** (a rate-limited store no longer false-Deads; 192 tests green). Measured raw SI density = **~1.3%** so the raw-millions play is not a frontier and a **proxy is ruled out** (free-direct drains the finite tagged pool). Next: build the bridge (per-brand flows pitch + a live-page HTTP-200 guard) on a **new dedicated Hetzner box**, isolated from Server #1 (a workflow agent wiped Server #1's live flow pages this session; restored). Blocked on a Hetzner API token. See `PENDING.md` + memory `project_flows_via_chat`.
+Requires Python 3.11 or newer and [uv](https://docs.astral.sh/uv/).
 
-## Status (2026-07-15)
+```bash
+uv sync                                  # creates .venv from uv.lock
+uv run playwright install chromium       # the browser the driver launches
+uv run pytest -q                         # 251 tests, no network needed
+```
 
-**Evidence audit + two retractions.** Under a "prove every friction" challenge, we re-verified against the
-real Server #1 ledgers and a live reach test. RETRACTED as unsupported: the "passive hCaptcha silently
-rejects ~half / delivery decays 67->48% from one IP" story (the 75-store run had **0 captcha challenges**;
-losses are adapter robustness) and the "per-box throughput is a constraint" claim (throughput never binds).
-CONFIRMED with receipts: poor reach from a single datacenter IP (live 5% burst / ~41% paced), a flaky proxy
-(1/3 tries 502), the proxy cannot carry a send (ADR-0006), pitch links still on mercwise.com, and the
-`channel="chrome"` default that will fail on Oracle ARM. Net: the real, proven friction is the **single
-send-IP** problem (reach + no proxy-for-sends). Open decision: accept single-IP decay and push raw volume,
-or provision multiple send IPs. Next: brainstorm proven fixes for the confirmed issues.
+Dry-run one store through the whole pipeline without sending:
 
-## Status (2026-07-14)
+```bash
+uv run python -m chat_outreach_engine.cli --help
+```
 
-**Relaunch prep + strategic pivot to input-based VOLUME.** The reply/gate inbox is now a free,
-disposable Zoho box (`nikhilmercwise@zohomail.in`, off Nikhil's personal Gmail, verified live);
-config is env-driven for the move to a FREE Oracle Cloud ARM server (not provisioned yet). Direction
-is now **input-based, not outcome-based**: drive volume, do NOT gate on bookings or build per-channel
-attribution. Channel = **Shopify Inbox (the "support box"), not the contact form**; the ~14.5k figure
-was only the tagged SI subset, so the volume play is forcing Shopify Inbox across the raw ~3.54M
-Shopify in the 8M file. A 92-risk pre-launch register + a 64-fix launch plan exist (claude.ai
-artifacts). **Next: a >=2,000-send run (prep -> dry-run -> warm-start 100 -> full 2k), pending the
-machine choice (Mac vs Server #1).** See `PENDING.md` for the live direction. 185 tests green.
+Live sends need a reply address in `REPLY_EMAIL` and a clean outbound IP. Datacenter IPs
+get blocked by many storefronts, which is why production runs from dedicated boxes.
+Do not send real pitches to real stores from a laptop while testing; use the dry-run path.
 
-## Status (2026-06-30, prior)
+## Things that will trip you up
 
-**Model: ONE-WAY delivery, and the STORE is the unit - reach it through ANY door.** We only need to
-DELIVER the pitch (it carries mercwise.com + cal.com/nikhil1/30min, so an interested merchant contacts
-us; no reply capture). Two doors, equal, neither sidelined: the **chat widget** and the store's native
-**contact form**. Per store: chat-first, form-fallback, one pitch (the Ledger enforces one). Success =
-cal.com bookings. **Current focus: make money on the free channels first, then decide what to scale.**
-
-Engine works end-to-end. DOM-drive vendors are configs over a shared `WidgetDriver` (ADR-0007); two get
-their own class. **Real-send proven:** Tidio, Tawk, Shopify Inbox. **Verify-to-composer proven:** Zendesk
-(5/5), LiveChat, Chatra, HelpScout, **Crisp** (33%), **Olark** (`window.olark`, page-DOM textarea, **70%** -
-strongest), **Zoho SalesIQ** (about:blank-frame textarea, **45%**). **API-send:** Gorgias (now confirms by
-dom_echo via ApiSendDriver), Intercom (wired). **Dropped (not headless-drivable):** Re:amaze, Richpanel,
-Kustomer, Freshchat/Gladly/Freshdesk. 176 tests green.
-
-**Gorgias struck from the pool:** the StoreLeads "Gorgias" tag is a HELPDESK/contact-forms tag, not the
-chat widget - 0/140 random qualified stores expose `window.GorgiasChat` (re-qualify with
-`research/gorgias_chatlive.py` before pitching). The "+6,220" was illusory.
-
-**Contact form** (`adapters/shopify_contact_form.py`, the second door): the store's native Shopify form,
-posts through their own site into their support inbox (sidesteps our email deliverability problem) and is
-the door most likely to be READ (a chat bubble can sit unseen). BUT it is gated by an INTERACTIVE hCaptcha
-that neither the proxy nor a headed browser beats (0/8); paid solver ruled out. So we deliver the
-**captcha-free subset only (~6% of Shopify stores)** and skip the rest. It is the highest-quality, smallest
-free slice.
-
-**Shopify Inbox** (count leader): the 75-store run DISPROVED the "captcha challenges at velocity" fear -
-**0 captcha challenges** - and delivery losses are ADAPTER ROBUSTNESS (widget not actually present on
-stale-tag stores, confirmation too strict, form/launcher variants), NOT captcha or IP throttling. ~24-39
-of 75 confirmed delivered. Verdict is double-send-safe. The **residential proxy is wired** (ProxyBase,
-residential+rotating, opt-in via a gitignored Server #1 `.env.proxy`); SI cost ~0.97 MB/store
-images-blocked. NOTE: the proxy lifts LOADING/reach but CANNOT carry a send (ADR-0006: 0/9 via proxy vs
-2/11 direct), so sends go direct.
-
-**Next: prove conversion (0 bookings so far).** A real HITL send batch on the free channels (SI + clean
-vendors + captcha-free contact forms) to get the first booking, then decide what is worth scaling.
-
-## Where it's going
-
-Breadth: a new DOM-drive vendor is a `VendorConfig` over `WidgetDriver`. Next is one consolidated
-clean-vendor `--send` batch with the new one-way pitch - it fires the owed first sends for
-Zendesk/Chatra/LiveChat and delivers at volume on Tidio/Tawk/Crisp (see `PENDING.md`). The first real
-human reply did land (a decline), proving the loop, but the one-way model no longer depends on it.
+- The servers do not run this checkout. They run a June snapshot plus an orchestrator that
+  is not here. A fix in this repo reaches production only when Nikhil copies it over.
+- The research scripts import server-only paths at module load. `pytest` is scoped to
+  `tests/` for that reason. Run a research script only by explicit path, on a server.
+- Every throughput or delivery number written in any doc here drifted within days of being
+  written. Treat them as dated snapshots. The queries in `docs/notes/` regenerate them.
+- Delivery is only counted when observed: a token echoed in the rendered thread, a wire ack,
+  or a cleared composer (ADR-0003). A terminal "200" is not a delivery.
 
 ## Stack
 
-Python, `uv`, `pytest`, SQLite Ledger, Playwright. Heavy runs on Server #1 (not the Mac).
-Built via the Spike/Plan/Build/Harden playbook. Tracker: GitHub issues on
-nikhilthale22-oss/chat-outreach-engine (see `CLAUDE.md`).
+Python, uv, pytest, Playwright, SQLite. Heavy runs happen on Hetzner boxes, not a laptop.
