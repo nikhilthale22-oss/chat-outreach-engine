@@ -24,7 +24,9 @@ def test_livechat_resolves_frame_by_url_and_opens_via_api():
     assert LIVECHAT.widget_frame_marker is None
     assert "LiveChatWidget" in LIVECHAT.ready_predicate
     assert LIVECHAT.open_js == "window.LiveChatWidget.call('maximize')"
-    assert LIVECHAT.confirm_strategy == "dom_echo"
+    # ONLINE LiveChat now confirms on the server's own receipt (a start_chat response with event_ids),
+    # not a screen echo (ADR-0009). The offline leave-a-message form path is unchanged.
+    assert LIVECHAT.confirm_strategy == "wire_token" and LIVECHAT.ack_frame_re
 
 
 def test_chatra_resolves_frame_by_url_and_opens_via_api():
@@ -36,6 +38,13 @@ def test_chatra_resolves_frame_by_url_and_opens_via_api():
     assert CHATRA.confirm_strategy == "dom_echo"
 
 
-def test_neither_has_an_email_gate_yet():
-    assert LIVECHAT.email_strategy == "none"
-    assert CHATRA.email_strategy == "none"
+def test_livechat_uses_the_contact_form_gate():
+    # Offline, LiveChat is a leave-a-message form; the contact_form path fills + submits it (an
+    # online store has no form and falls back to the chat send + dom_echo).
+    assert LIVECHAT.email_strategy == "contact_form"
+
+
+def test_chatra_uses_the_composer_intro_gate():
+    # Chatra holds a message behind a name/email intro typed into the composer; composer_intro
+    # fills it so the held message flushes.
+    assert CHATRA.email_strategy == "composer_intro"

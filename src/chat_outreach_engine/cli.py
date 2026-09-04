@@ -8,12 +8,14 @@ nothing. Pass --send to actually pitch a real Brand (HITL step).
 from __future__ import annotations
 
 import argparse
+import os
 
 from .adapters import (
     ChatraAdapter,
     CrispAdapter,
     GorgiasAdapter,
     HelpScoutAdapter,
+    HubSpotAdapter,
     IntercomAdapter,
     LiveChatAdapter,
     OlarkAdapter,
@@ -37,7 +39,7 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("domain")
     ap.add_argument("--send", action="store_true", help="actually send (default is dry-run)")
-    ap.add_argument("--email", default="nikhilthale18@gmail.com")
+    ap.add_argument("--email", default=os.environ.get("REPLY_EMAIL", "nikhilmercwise@zohomail.in"))
     ap.add_argument("--pitch", default=DEFAULT_PITCH)
     ap.add_argument("--variant", default="A")
     ap.add_argument("--db", default="ledger.db")
@@ -50,6 +52,7 @@ def main(argv=None) -> None:
                          "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
                          "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(),
                          "intercom": IntercomAdapter(), "helpscout": HelpScoutAdapter(),
+                         "hubspot-chat": HubSpotAdapter(),
                          "zendesk": ZendeskAdapter(), "crisp": CrispAdapter(),
                          "reamaze": ReamazeAdapter(), "olark": OlarkAdapter(),
                          "zoho-salesiq": ZohoSalesIQAdapter()})

@@ -2,6 +2,7 @@ from .chatra import ChatraAdapter
 from .crisp import CrispAdapter
 from .gorgias import GorgiasAdapter
 from .helpscout import HelpScoutAdapter
+from .hubspot import HubSpotAdapter
 from .intercom import IntercomAdapter
 from .livechat import LiveChatAdapter
 from .olark import OlarkAdapter
@@ -13,6 +14,7 @@ from .tidio import TidioAdapter
 from .zendesk import ZendeskAdapter
 from .zoho_salesiq import ZohoSalesIQAdapter
 
-__all__ = ["ChatraAdapter", "CrispAdapter", "GorgiasAdapter", "HelpScoutAdapter", "IntercomAdapter",
-           "LiveChatAdapter", "OlarkAdapter", "ReamazeAdapter", "ShopifyContactFormAdapter",
-           "ShopifyInboxAdapter", "TawkAdapter", "TidioAdapter", "ZendeskAdapter", "ZohoSalesIQAdapter"]
+__all__ = ["ChatraAdapter", "CrispAdapter", "GorgiasAdapter", "HelpScoutAdapter", "HubSpotAdapter",
+           "IntercomAdapter", "LiveChatAdapter", "OlarkAdapter", "ReamazeAdapter",
+           "ShopifyContactFormAdapter", "ShopifyInboxAdapter", "TawkAdapter", "TidioAdapter",
+           "ZendeskAdapter", "ZohoSalesIQAdapter"]

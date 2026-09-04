@@ -45,7 +45,10 @@ def test_config_confirms_via_dom_echo():
     assert TAWK.confirm_setup_js is None
 
 
-def test_config_has_no_email_gate_by_default():
-    # the default tawk widget has no pre-chat email form; the composer is immediate
-    assert TAWK.email_strategy == "none"
+def test_config_uses_contact_form_for_offline_and_prechat_gate_for_custom_widgets():
+    # ONLINE default widget: live composer, no email field -> falls through to the chat send.
+    # OFFLINE: a leave-a-message form (Name/Email/Message + Submit) -> contact_form path files it.
+    # CUSTOM widget: a Name/Email/Phone pre-chat gate -> prechat_form_gate fills+starts the chat.
+    assert TAWK.email_strategy == "contact_form"
     assert TAWK.email_api_js is None
+    assert TAWK.prechat_form_gate is True

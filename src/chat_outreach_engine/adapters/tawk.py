@@ -32,7 +32,11 @@ TAWK = VendorConfig(
     open_js="window.Tawk_API.maximize()",
     entry_labels=("New Conversation", "Start a conversation", "Send us a message",
                   "Chat with us", "Start chat"),
-    email_strategy="none",
+    # OFFLINE, a Tawk store shows a leave-a-message form (Name/Email/Message + Submit) instead of a
+    # live composer; contact_form routes that to _submit_contact_form so the pitch is filed as a
+    # ticket with our reply email. ONLINE (a live composer, no email field / submit) it falls through
+    # to the normal chat send, so one strategy covers both states (verified: fringe-co is offline).
+    email_strategy="contact_form",
     email_api_js=None,
     confirm_strategy="dom_echo",
     confirm_frame_marker=None,
@@ -44,6 +48,10 @@ TAWK = VendorConfig(
     # composer would be chicken-and-egg (the composer only appears after clicking the entry,
     # which needs the frame). The panel root is present on the Home screen of every variant.
     widget_frame_marker=".tawk-chat-panel",
+    # 'Custom widget' Tawk stores gate the composer behind a required Name/Email/Phone pre-chat form
+    # (+ a 'Start Chat' button) shown after the entry click; the driver fills+submits it so the
+    # composer renders. Default-widget stores have no such form, so this is a no-op there.
+    prechat_form_gate=True,
 )
 
 

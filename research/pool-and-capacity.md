@@ -21,8 +21,11 @@ Gobot 105, Drift 54.
 
 ## Measured deliverable capacity NOW (~14.5k, ~97% Shopify Inbox)
 
-- **Shopify Inbox ~14,000** = 73,514 x ~19% (MEASURED 15/80, free datacenter path; throttled - the
-  passive hCaptcha silently rejects ~half and the rate decays with volume from one IP).
+- **Shopify Inbox ~14,000-38,000** = 73,514 x ~19-52% (MEASURED: 15/80 on one run, 24-39/75 on another;
+  free datacenter path). CORRECTED 2026-07-15: losses are ADAPTER ROBUSTNESS (widget absent on stale
+  tags, strict confirm, form/launcher variants), NOT captcha - the 75-store run had 0 captcha challenges.
+  There is NO "passive hCaptcha silently rejects half / decays 67->48% from one IP" effect (misread of
+  form_blocked).
 - **Tidio ~420** = 5,498 x 7.6% (MEASURED N=40). Everything else is verify-to-composer (reach proven,
   delivery rate NOT yet): Zendesk ~600 est, Tawk ~300, Chatra ~150, Crisp ~80, LiveChat ~35. Gorgias /
   Intercom API wired-but-unverified.

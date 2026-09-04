@@ -98,10 +98,11 @@ def imap_fetch_unseen(host: str, user: str, password: str, mailbox: str = "INBOX
     """Build a fetch_unseen() that pulls UNSEEN messages from a Gmail inbox over IMAP SSL.
 
     NON-DESTRUCTIVE: the mailbox is opened readonly (EXAMINE) and messages are fetched with
-    BODY.PEEK[], so we NEVER flip the inbox's real unread mail to read. The gate inbox may be a
-    busy personal inbox (thousands of genuine unread) - marking those seen would be unforgivable.
-    `since` (an IMAP date like "22-Jun-2026") narrows to recent mail so a backlog of old unread is
-    not rescanned every poll. Lazy imports so the package imports without a live inbox in tests."""
+    BODY.PEEK[], so we NEVER flip the inbox's real unread mail to read. Kept non-destructive even
+    though this is now a dedicated outreach inbox, so a human reading it later still sees which
+    mail is genuinely unread. `since` (an IMAP date like "22-Jun-2026") narrows to recent mail so a
+    backlog of old unread is not rescanned every poll. Lazy imports so the package imports without a
+    live inbox in tests."""
     def fetch() -> list:
         import email as emaillib
         import imaplib

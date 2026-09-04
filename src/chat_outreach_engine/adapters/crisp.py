@@ -9,7 +9,11 @@ Crisp is DOM-drive (a VendorConfig over WidgetDriver, ADR-0007), established by 
   page-level <textarea placeholder="Compose your message...">; no frame resolution needed.
 - One-way model: we only need to DELIVER the pitch (it carries our links), so email_strategy="none"
   - Crisp can attach an email via $crisp set user:email, but we do not rely on an inbound reply.
-  Confirm via dom_echo: the sent message echoes into the conversation and clears the composer.
+- Confirm via wire_token on the "message:send" websocket frame (proven live on twochimpscoffee.com,
+  2026-07-19): the pitch leaves as 42["message:send",{"type":"text","content":"<pitch>"...}] over
+  Crisp's socket. That confirms an actual TRANSMIT, not merely that the text rendered - dom_echo was
+  replaced here after it was shown to false-positive on a re-rendering widget (Reamaze "Not Sent
+  Yet"). Crisp accepts messages online AND offline through the same send, so there is no offline gate.
 - Coverage caveat: the static "Crisp" tech tag over-counts; only stores whose $crisp SDK actually
   loads pass the ready gate (others return no_crisp_api).
 """
@@ -35,8 +39,8 @@ CRISP = VendorConfig(
     entry_labels=(),                         # open lands directly on the composer (no Home screen)
     email_strategy="none",
     email_api_js=None,
-    confirm_strategy="dom_echo",
-    confirm_frame_marker=None,
+    confirm_strategy="wire_token",
+    confirm_frame_marker="message:send",     # our pitch leaves as a Crisp socket "message:send" frame
     composer_selector=_COMPOSER,
     entry_selector="button, [role='button']",
     entry_strategy="by_text",

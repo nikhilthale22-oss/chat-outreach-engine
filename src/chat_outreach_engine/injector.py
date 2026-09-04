@@ -21,6 +21,8 @@ class Detection:
     has_widget: bool
     vendor: str | None
     has_ai: bool
+    kind: str = "unknown"        # "human" | "ai" | "hybrid" | "unknown"
+    category: str | None = None
 
 
 @dataclass(frozen=True)

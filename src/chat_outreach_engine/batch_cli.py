@@ -13,6 +13,7 @@ Visible browser per send: HEADED=1.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from .adapters import (
@@ -20,6 +21,7 @@ from .adapters import (
     CrispAdapter,
     GorgiasAdapter,
     HelpScoutAdapter,
+    HubSpotAdapter,
     IntercomAdapter,
     LiveChatAdapter,
     OlarkAdapter,
@@ -58,7 +60,7 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("domains_file", help="file with one domain per line, or - for stdin")
     ap.add_argument("--send", action="store_true", help="actually pitch (default: dry-run)")
-    ap.add_argument("--email", default="nikhilthale18@gmail.com")
+    ap.add_argument("--email", default=os.environ.get("REPLY_EMAIL", "nikhilmercwise@zohomail.in"))
     ap.add_argument("--db", default="ledger.db")
     ap.add_argument("--concurrency", type=int, default=8, help="browser send concurrency")
     ap.add_argument("--assess-concurrency", type=int, default=16,
@@ -78,7 +80,7 @@ def main(argv=None) -> None:
     ledger = Ledger(args.db)
     available = {"gorgias": GorgiasAdapter(), "tidio": TidioAdapter(), "tawk.to": TawkAdapter(),
                  "livechat": LiveChatAdapter(), "chatra": ChatraAdapter(), "intercom": IntercomAdapter(),
-                 "helpscout": HelpScoutAdapter(), "zendesk": ZendeskAdapter(),
+                 "helpscout": HelpScoutAdapter(), "hubspot-chat": HubSpotAdapter(), "zendesk": ZendeskAdapter(),
                  "shopify-inbox": ShopifyInboxAdapter(), "shopify-contact-form": ShopifyContactFormAdapter(), "crisp": CrispAdapter(),
                  "reamaze": ReamazeAdapter(), "olark": OlarkAdapter(),
                  "zoho-salesiq": ZohoSalesIQAdapter()}

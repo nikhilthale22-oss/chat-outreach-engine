@@ -19,10 +19,11 @@ loader against the live HTML before spending a browser launch.
 from __future__ import annotations
 
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
-from . import signatures
+from .detect import signatures
 from .ledger import Ledger, UnknownBrand
 from .pitches import PITCHES
 
@@ -188,6 +189,62 @@ def _loader_http_status(url: str) -> int:
     return r.status_code
 
 
+# Reach robustness for the FREE (no-proxy) path. A single datacenter IP mostly gets HTTP 429
+# (rate limited) in bursts, not banned - so a short backoff recovers the store instead of losing
+# it. Before this, a 429 error PAGE was returned as if it were the storefront, matched no widget
+# signature, and the Brand was marked Dead: silently burning reachable stores. Now a rate-limit
+# backs off and retries, and a persistent block returns "" (a RETRYABLE fetch_failed that leaves
+# the Brand Queued for a later run - or another shard's IP - never a false "no widget" Dead).
+_FETCH_ATTEMPTS = 3
+
+
+def _is_retryable_status(status: int) -> bool:
+    """HTTP statuses worth retrying the SAME fetch after a backoff: 429 (rate limited) and 5xx
+    (transient server/edge errors). 4xx like 403/404 are not retried here (they leave the Brand
+    Queued via an empty result, so a later run from a fresh IP can still pick them up)."""
+    return status == 429 or 500 <= status <= 599
+
+
+def _backoff_seconds(attempt: int, base: float = 0.5, cap: float = 8.0) -> float:
+    """Exponential backoff for a 0-indexed retry attempt: 0.5s, 1s, 2s, 4s ... capped at `cap`."""
+    return min(cap, base * (2 ** attempt))
+
+
+def fetch_html(domain: str, get=None, sleep=None, attempts: int = _FETCH_ATTEMPTS) -> str:
+    """Fetch a Brand's homepage HTML, retrying rate-limits/5xx with backoff. Returns the page text
+    on a 2xx, else "" (empty = a RETRYABLE fetch_failed at the batch level, never a false Dead).
+    `get(url) -> (status, text)` and `sleep(secs)` are injectable so the retry policy is unit-tested
+    without real HTTP; the defaults use requests (honoring the opt-in proxy) + time.sleep."""
+    get = get or _http_get
+    sleep = sleep or time.sleep
+    for scheme in ("https://", "http://"):
+        for attempt in range(attempts):
+            try:
+                status, text = get(scheme + domain)
+            except Exception:
+                break                      # connection error on this scheme -> try the other scheme
+            if 200 <= status < 300:
+                return (text or "")[:2_000_000]
+            if _is_retryable_status(status) and attempt < attempts - 1:
+                sleep(_backoff_seconds(attempt))
+                continue
+            break                          # non-retryable status or attempts exhausted
+    return ""
+
+
+def _http_get(url: str):
+    import requests
+    import urllib3
+
+    from .proxy import requests_proxies
+
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    headers = {"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.9"}
+    r = requests.get(url, headers=headers, timeout=15, verify=False,
+                     allow_redirects=True, proxies=requests_proxies())
+    return r.status_code, (r.text or "")
+
+
 class LiveAssessor:
     """Fetches a Brand's homepage ONCE and derives vendor + has_ai + the live gate. For Tidio
     the gate also verifies the loader is actually live (filters expired/removed accounts whose
@@ -220,22 +277,7 @@ class LiveAssessor:
 
     @staticmethod
     def _fetch(domain: str) -> str:
-        import requests
-        import urllib3
-
-        from .proxy import requests_proxies
-
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        headers = {"User-Agent": _UA, "Accept-Language": "en-US,en;q=0.9"}
-        proxies = requests_proxies()
-        for scheme in ("https://", "http://"):
-            try:
-                r = requests.get(scheme + domain, headers=headers, timeout=15,
-                                 verify=False, allow_redirects=True, proxies=proxies)
-                return (r.text or "")[:2_000_000]
-            except Exception:
-                continue
-        return ""
+        return fetch_html(domain)
 
 
 class ForcedVendorAssessor:

@@ -21,13 +21,26 @@ CHATRA = VendorConfig(
     not_ready_detail="no_chatra",
     open_js="window.Chatra('openChat', true)",
     entry_labels=("Start a conversation", "New conversation", "Chat with us", "Send a message"),
-    email_strategy="none",
+    # Chatra holds a visitor message as "unsent, please introduce yourself" until a name (then
+    # email) is typed into the SAME composer (verified live 2026-07-17 on gembreakfast.com +
+    # jennifermillerjewelry.com). The composer_intro gate fills that intro so the held message
+    # flushes, and confirms the unsent flag actually cleared (dom_echo alone false-positives on
+    # the optimistic render).
+    email_strategy="composer_intro",
     email_api_js=None,
     confirm_strategy="dom_echo",
     confirm_frame_marker=None,
     composer_selector="textarea.js-chat-textarea, textarea[placeholder*='message' i]",
     entry_strategy="by_text",
     widget_frame_url="chatra.io",
+    # Server receipt (ADR-0009): Chatra's DDP layer echoes a stored visitor message back as a
+    # `{"msg":"added","collection":"Messages",...,"message":"<our pitch>","saved":true}` frame
+    # (verified live on tinyundies.com - it stored our text even while the team was offline). The
+    # frame arrives SockJS-escaped, so the pattern is backslash-tolerant. This regex only captures
+    # Messages-collection frames; _finish_composer_intro then confirms one carries OUR token, so a
+    # bot/system Messages frame (no message text) can never false-positive. Whitespace-tolerant after
+    # the colon in case a build emits pretty-printed JSON.
+    ack_frame_re=r'collection\\?":\s*\\?"Messages',
 )
 
 

@@ -27,9 +27,10 @@ def test_config_uses_the_olark_sdk_and_opens_via_box_expand():
     assert OLARK.open_js.count("catch") >= 2     # box.expand + box.show, each guarded
 
 
-def test_config_drives_a_page_level_composer_not_an_iframe():
-    # Olark injects its chatbox into the host page DOM, so there is no widget iframe to resolve
-    assert OLARK.widget_scope is None
+def test_config_drives_a_page_level_composer_scoped_to_its_container():
+    # Olark injects its chatbox into the host page DOM (no UI iframe), so field-finding must be scoped
+    # to the widget's own container - otherwise the contact-form path grabs the page's newsletter input.
+    assert OLARK.widget_scope == "#olark-container"
     assert OLARK.widget_frame_marker is None
     assert OLARK.widget_frame_url is None
     assert "textarea" in OLARK.composer_selector
@@ -42,11 +43,12 @@ def test_composer_selector_targets_the_message_textarea_only():
     assert "olark-custom-element" in OLARK.composer_selector
 
 
-def test_config_no_email_gate_and_dom_echo_confirm():
-    # one-way model: deliver only, no inbound reply path needed
-    assert OLARK.email_strategy == "none"
+def test_offline_uses_the_contact_form_path():
+    # offline Olark shows a required Name/Email/Message leave-a-message survey + SEND; we fill+submit
+    # it via the contact_form path (online stores have no such form -> _is_contact_form False -> live send)
+    assert OLARK.email_strategy == "contact_form"
     assert OLARK.email_api_js is None
-    assert OLARK.confirm_strategy == "dom_echo"
+    assert OLARK.confirm_strategy == "dom_echo"    # online fallback; offline confirms via _form_confirmed
 
 
 def test_send_exposes_dry_run_for_verify_to_composer():

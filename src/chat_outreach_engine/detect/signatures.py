@@ -244,6 +244,17 @@ VENDORS = [
      "runtime_globals": ["ShopifyChat"],
      "dom_selectors": ["#shopify-chat", "shopify-chat"]},
 
+    {"vendor": "shopify-agent", "category": "ecommerce-chat",
+     # Shopify's newer JS-injected AI assistant ("Storekick"). The classic shopify-inbox
+     # signal (messaging-api.shopifyapps.com) is NOT in the static homepage HTML, but the
+     # <shopify-agent> custom element and the "storekick" product string are - confirmed live
+     # on modishrugger.com. High precision: neither appears unless the agent is embedded.
+     "script_patterns": [],
+     "iframe_patterns": [],
+     "api_call_patterns": [r"<shopify-agent\b", r"\bstorekick\b"],
+     "runtime_globals": [],
+     "dom_selectors": ["shopify-agent"]},
+
     {"vendor": "shopify-ai-chat", "category": "ecommerce-chat",
      "script_patterns": [r"shopify-chat-agent.*\.fly\.dev", r"shop\.app/.*chat"],
      "iframe_patterns": [],
@@ -489,6 +500,46 @@ def match_html(html: str):
                 seen.add(v["vendor"])
                 break
     return out
+
+
+# --- AI vs human classification -------------------------------------------------
+# kind values:
+#   "human"   a person answers (Tawk, Crisp, most live-chat / helpdesk)
+#   "ai"      a bot answers (AI-native vendors, and commerce AI like Zipchat)
+#   "hybrid"  the vendor commonly runs an AI agent that may answer FIRST, so raw HTML
+#             cannot tell for sure - it needs a live peek at the opened widget
+#   "unknown" no widget detected
+_KIND_BY_CATEGORY = {
+    "ai-chat": "ai",
+    "live-chat": "human",
+    "helpdesk": "human",
+    "open-source-chat": "human",
+    "ecommerce-chat": "hybrid",
+}
+
+# Overrides where the category default is misleading for a specific vendor.
+_KIND_OVERRIDE = {
+    "shopify-agent": "ai",       # Shopify's Storekick AI assistant (seen live on modishrugger)
+    "shopify-ai-chat": "ai",
+    "zipchat": "ai",
+    "shopify-inbox": "hybrid",   # fronts Shopify's Storekick AI agent; a human can still pick up
+    "intercom": "hybrid",        # Fin AI
+    "tidio": "hybrid",           # Lyro AI
+    "zendesk": "hybrid",         # AI agents
+    "gorgias": "hybrid",         # Gorgias AI
+    "freshchat": "hybrid",       # Freddy AI
+    "delightchat": "human",
+    "gohighlevel": "human",
+}
+
+
+def kind_for(vendor, category):
+    """Classify a detected widget as human / ai / hybrid / unknown."""
+    if vendor is None:
+        return "unknown"
+    if vendor in _KIND_OVERRIDE:
+        return _KIND_OVERRIDE[vendor]
+    return _KIND_BY_CATEGORY.get(category, "unknown")
 
 
 if __name__ == "__main__":

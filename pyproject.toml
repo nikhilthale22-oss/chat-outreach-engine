@@ -8,6 +8,11 @@ dependencies = ["requests>=2", "playwright>=1.40"]
 [dependency-groups]
 dev = ["pytest>=8"]
 
+[tool.pytest.ini_options]
+# Default collection is the unit suite only. The research/ scripts are Server #1 tools that
+# read /root/... at import (so they fail to collect off-server) - run those explicitly by path.
+testpaths = ["tests"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

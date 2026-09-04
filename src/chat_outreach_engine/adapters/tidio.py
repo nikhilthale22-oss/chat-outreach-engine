@@ -35,6 +35,9 @@ TIDIO = VendorConfig(
     email_api_js="window.tidioChatApi.setContactProperties({email: e})",
     confirm_strategy="wire_token",
     confirm_frame_marker="visitorNewMessage",
+    # Server receipt (ADR-0009): Tidio acks a stored visitorNewMessage with a socket.io ack frame
+    # `<n>[true,{"id":<serverId>}]`. Delivered only when we SEE that server frame, not our sent one.
+    ack_frame_re=r'\[true,\{"id":\s*\d+',
 )
 
 

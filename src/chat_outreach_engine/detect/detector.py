@@ -7,7 +7,7 @@ module imports cleanly in test environments that fake the Detector.
 from __future__ import annotations
 
 from . import signatures
-from .injector import Detection
+from ..injector import Detection
 
 # Vendors in this category already have AI behind the chat, so they are not Qualified.
 AI_CATEGORY = "ai-chat"
@@ -24,10 +24,14 @@ class SignatureDetector:
         html = self._fetch(domain)
         hits = signatures.match_html(html) if html else []
         if not hits:
-            return Detection(has_widget=False, vendor=None, has_ai=False)
+            return Detection(has_widget=False, vendor=None, has_ai=False,
+                             kind="unknown", category=None)
         vendor = hits[0]["vendor"]
+        category = hits[0]["category"]
         has_ai = any(h.get("category") == AI_CATEGORY for h in hits)
-        return Detection(has_widget=True, vendor=vendor, has_ai=has_ai)
+        kind = signatures.kind_for(vendor, category)
+        return Detection(has_widget=True, vendor=vendor, has_ai=has_ai,
+                         kind=kind, category=category)
 
     @staticmethod
     def _fetch(domain: str) -> str:
